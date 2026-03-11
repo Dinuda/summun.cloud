@@ -3,19 +3,19 @@ import { applyUiBranding, isWorktreeUiBrandingEnabled, renderFaviconLinks } from
 
 const TEMPLATE = `<!doctype html>
 <head>
-    <!-- PAPERCLIP_FAVICON_START -->
+    <!-- SUMMUN_FAVICON_START -->
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-    <!-- PAPERCLIP_FAVICON_END -->
+    <!-- SUMMUN_FAVICON_END -->
 </head>`;
 
 describe("ui branding", () => {
-  it("detects worktree mode from PAPERCLIP_IN_WORKTREE", () => {
-    expect(isWorktreeUiBrandingEnabled({ PAPERCLIP_IN_WORKTREE: "true" })).toBe(true);
-    expect(isWorktreeUiBrandingEnabled({ PAPERCLIP_IN_WORKTREE: "1" })).toBe(true);
-    expect(isWorktreeUiBrandingEnabled({ PAPERCLIP_IN_WORKTREE: "false" })).toBe(false);
+  it("detects worktree mode from SUMMUN_IN_WORKTREE", () => {
+    expect(isWorktreeUiBrandingEnabled({ SUMMUN_IN_WORKTREE: "true" })).toBe(true);
+    expect(isWorktreeUiBrandingEnabled({ SUMMUN_IN_WORKTREE: "1" })).toBe(true);
+    expect(isWorktreeUiBrandingEnabled({ SUMMUN_IN_WORKTREE: "false" })).toBe(false);
   });
 
   it("renders the worktree favicon asset set when enabled", () => {
@@ -27,7 +27,7 @@ describe("ui branding", () => {
   });
 
   it("rewrites the favicon block for worktree instances only", () => {
-    const branded = applyUiBranding(TEMPLATE, { PAPERCLIP_IN_WORKTREE: "true" });
+    const branded = applyUiBranding(TEMPLATE, { SUMMUN_IN_WORKTREE: "true" });
     expect(branded).toContain("/worktree-favicon.svg");
     expect(branded).not.toContain('href="/favicon.svg"');
 

@@ -8,7 +8,7 @@ async function writeFakeAgentCommand(binDir: string, argsCapturePath: string): P
   const commandPath = path.join(binDir, "agent");
   const script = `#!/usr/bin/env node
 const fs = require("node:fs");
-const outPath = process.env.PAPERCLIP_TEST_ARGS_PATH;
+const outPath = process.env.SUMMUN_TEST_ARGS_PATH;
 if (outPath) {
   fs.writeFileSync(outPath, JSON.stringify(process.argv.slice(2)), "utf8");
 }
@@ -72,7 +72,7 @@ describe("cursor environment diagnostics", () => {
         cwd,
         env: {
           CURSOR_API_KEY: "test-key",
-          PAPERCLIP_TEST_ARGS_PATH: argsCapturePath,
+          SUMMUN_TEST_ARGS_PATH: argsCapturePath,
           PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
         },
       },
@@ -104,7 +104,7 @@ describe("cursor environment diagnostics", () => {
         extraArgs: ["--yolo"],
         env: {
           CURSOR_API_KEY: "test-key",
-          PAPERCLIP_TEST_ARGS_PATH: argsCapturePath,
+          SUMMUN_TEST_ARGS_PATH: argsCapturePath,
           PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
         },
       },

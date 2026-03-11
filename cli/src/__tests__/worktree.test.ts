@@ -123,7 +123,7 @@ describe("worktree helpers", () => {
   it("builds isolated config and env paths for a worktree", () => {
     const paths = resolveWorktreeLocalPaths({
       cwd: "/tmp/paperclip-feature",
-      homeDir: "/tmp/paperclip-worktrees",
+      homeDir: "/tmp/summun-worktrees",
       instanceId: "feature-worktree-support",
     });
     const config = buildWorktreeConfig({
@@ -135,20 +135,20 @@ describe("worktree helpers", () => {
     });
 
     expect(config.database.embeddedPostgresDataDir).toBe(
-      path.resolve("/tmp/paperclip-worktrees", "instances", "feature-worktree-support", "db"),
+      path.resolve("/tmp/summun-worktrees", "instances", "feature-worktree-support", "db"),
     );
     expect(config.database.embeddedPostgresPort).toBe(54339);
     expect(config.server.port).toBe(3110);
     expect(config.auth.publicBaseUrl).toBe("http://127.0.0.1:3110/");
     expect(config.storage.localDisk.baseDir).toBe(
-      path.resolve("/tmp/paperclip-worktrees", "instances", "feature-worktree-support", "data", "storage"),
+      path.resolve("/tmp/summun-worktrees", "instances", "feature-worktree-support", "data", "storage"),
     );
 
     const env = buildWorktreeEnvEntries(paths);
-    expect(env.PAPERCLIP_HOME).toBe(path.resolve("/tmp/paperclip-worktrees"));
-    expect(env.PAPERCLIP_INSTANCE_ID).toBe("feature-worktree-support");
-    expect(env.PAPERCLIP_IN_WORKTREE).toBe("true");
-    expect(formatShellExports(env)).toContain("export PAPERCLIP_INSTANCE_ID='feature-worktree-support'");
+    expect(env.SUMMUN_HOME).toBe(path.resolve("/tmp/summun-worktrees"));
+    expect(env.SUMMUN_INSTANCE_ID).toBe("feature-worktree-support");
+    expect(env.SUMMUN_IN_WORKTREE).toBe("true");
+    expect(formatShellExports(env)).toContain("export SUMMUN_INSTANCE_ID='feature-worktree-support'");
   });
 
   it("uses minimal seed mode to keep app state but drop heavy runtime history", () => {
@@ -200,7 +200,7 @@ describe("worktree helpers", () => {
         sourceConfigPath,
         sourceConfig: buildSourceConfig(),
         sourceEnvEntries: {
-          PAPERCLIP_SECRETS_MASTER_KEY: "inline-source-master-key",
+          SUMMUN_SECRETS_MASTER_KEY: "inline-source-master-key",
         },
         targetKeyFilePath: targetKeyPath,
       });
@@ -310,12 +310,12 @@ describe("worktree helpers", () => {
 
       await worktreeMakeCommand("paperclip-make-test", {
         seed: false,
-        home: path.join(tempRoot, ".paperclip-worktrees"),
+        home: path.join(tempRoot, ".summun-worktrees"),
       });
 
       expect(fs.existsSync(path.join(worktreePath, ".git"))).toBe(true);
-      expect(fs.existsSync(path.join(worktreePath, ".paperclip", "config.json"))).toBe(true);
-      expect(fs.existsSync(path.join(worktreePath, ".paperclip", ".env"))).toBe(true);
+      expect(fs.existsSync(path.join(worktreePath, ".summun", "config.json"))).toBe(true);
+      expect(fs.existsSync(path.join(worktreePath, ".summun", ".env"))).toBe(true);
     } finally {
       process.chdir(originalCwd);
       if (originalHome === undefined) {

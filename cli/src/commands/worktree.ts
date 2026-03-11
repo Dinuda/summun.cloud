@@ -404,7 +404,7 @@ async function rebindSeededProjectWorkspaces(input: {
 
 function resolveSourceConfigPath(opts: WorktreeInitOptions): string {
   if (opts.fromConfig) return path.resolve(opts.fromConfig);
-  const sourceHome = path.resolve(expandHomePrefix(opts.fromDataDir ?? "~/.paperclip"));
+  const sourceHome = path.resolve(expandHomePrefix(opts.fromDataDir ?? "~/.summun"));
   const sourceInstanceId = sanitizeWorktreeInstanceId(opts.fromInstance ?? "default");
   return path.resolve(sourceHome, "instances", sourceInstanceId, "config.json");
 }
@@ -437,8 +437,8 @@ export function copySeededSecretsKey(input: {
   mkdirSync(path.dirname(input.targetKeyFilePath), { recursive: true });
 
   const sourceInlineMasterKey =
-    nonEmpty(input.sourceEnvEntries.PAPERCLIP_SECRETS_MASTER_KEY) ??
-    nonEmpty(process.env.PAPERCLIP_SECRETS_MASTER_KEY);
+    nonEmpty(input.sourceEnvEntries.SUMMUN_SECRETS_MASTER_KEY) ??
+    nonEmpty(process.env.SUMMUN_SECRETS_MASTER_KEY);
   if (sourceInlineMasterKey) {
     writeFileSync(input.targetKeyFilePath, sourceInlineMasterKey, {
       encoding: "utf8",
@@ -453,8 +453,8 @@ export function copySeededSecretsKey(input: {
   }
 
   const sourceKeyFileOverride =
-    nonEmpty(input.sourceEnvEntries.PAPERCLIP_SECRETS_MASTER_KEY_FILE) ??
-    nonEmpty(process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE);
+    nonEmpty(input.sourceEnvEntries.SUMMUN_SECRETS_MASTER_KEY_FILE) ??
+    nonEmpty(process.env.SUMMUN_SECRETS_MASTER_KEY_FILE);
   const sourceConfiguredKeyPath = sourceKeyFileOverride ?? input.sourceConfig.secrets.localEncrypted.keyFilePath;
   const sourceKeyFilePath = resolveRuntimeLikePath(sourceConfiguredKeyPath, input.sourceConfigPath);
 
@@ -753,10 +753,10 @@ export async function worktreeEnvCommand(opts: WorktreeEnvOptions): Promise<void
   const envPath = resolvePaperclipEnvFile(configPath);
   const envEntries = readPaperclipEnvEntries(envPath);
   const out = {
-    PAPERCLIP_CONFIG: configPath,
-    ...(envEntries.PAPERCLIP_HOME ? { PAPERCLIP_HOME: envEntries.PAPERCLIP_HOME } : {}),
-    ...(envEntries.PAPERCLIP_INSTANCE_ID ? { PAPERCLIP_INSTANCE_ID: envEntries.PAPERCLIP_INSTANCE_ID } : {}),
-    ...(envEntries.PAPERCLIP_CONTEXT ? { PAPERCLIP_CONTEXT: envEntries.PAPERCLIP_CONTEXT } : {}),
+    SUMMUN_CONFIG: configPath,
+    ...(envEntries.SUMMUN_HOME ? { SUMMUN_HOME: envEntries.SUMMUN_HOME } : {}),
+    ...(envEntries.SUMMUN_INSTANCE_ID ? { SUMMUN_INSTANCE_ID: envEntries.SUMMUN_INSTANCE_ID } : {}),
+    ...(envEntries.SUMMUN_CONTEXT ? { SUMMUN_CONTEXT: envEntries.SUMMUN_CONTEXT } : {}),
     ...envEntries,
   };
 
@@ -778,7 +778,7 @@ export function registerWorktreeCommands(program: Command): void {
     .option("--instance <id>", "Explicit isolated instance id")
     .option("--home <path>", `Home root for worktree instances (default: ${DEFAULT_WORKTREE_HOME})`)
     .option("--from-config <path>", "Source config.json to seed from")
-    .option("--from-data-dir <path>", "Source PAPERCLIP_HOME used when deriving the source config")
+    .option("--from-data-dir <path>", "Source SUMMUN_HOME used when deriving the source config")
     .option("--from-instance <id>", "Source instance id when deriving the source config", "default")
     .option("--server-port <port>", "Preferred server port", (value) => Number(value))
     .option("--db-port <port>", "Preferred embedded Postgres port", (value) => Number(value))
@@ -794,7 +794,7 @@ export function registerWorktreeCommands(program: Command): void {
     .option("--instance <id>", "Explicit isolated instance id")
     .option("--home <path>", `Home root for worktree instances (default: ${DEFAULT_WORKTREE_HOME})`)
     .option("--from-config <path>", "Source config.json to seed from")
-    .option("--from-data-dir <path>", "Source PAPERCLIP_HOME used when deriving the source config")
+    .option("--from-data-dir <path>", "Source SUMMUN_HOME used when deriving the source config")
     .option("--from-instance <id>", "Source instance id when deriving the source config", "default")
     .option("--server-port <port>", "Preferred server port", (value) => Number(value))
     .option("--db-port <port>", "Preferred embedded Postgres port", (value) => Number(value))

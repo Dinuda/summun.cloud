@@ -15,18 +15,18 @@ describe("home path resolution", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("defaults to ~/.paperclip and default instance", () => {
-    delete process.env.PAPERCLIP_HOME;
-    delete process.env.PAPERCLIP_INSTANCE_ID;
+  it("defaults to ~/.summun and default instance", () => {
+    delete process.env.SUMMUN_HOME;
+    delete process.env.SUMMUN_INSTANCE_ID;
 
     const paths = describeLocalInstancePaths();
-    expect(paths.homeDir).toBe(path.resolve(os.homedir(), ".paperclip"));
+    expect(paths.homeDir).toBe(path.resolve(os.homedir(), ".summun"));
     expect(paths.instanceId).toBe("default");
-    expect(paths.configPath).toBe(path.resolve(os.homedir(), ".paperclip", "instances", "default", "config.json"));
+    expect(paths.configPath).toBe(path.resolve(os.homedir(), ".summun", "instances", "default", "config.json"));
   });
 
-  it("supports PAPERCLIP_HOME and explicit instance ids", () => {
-    process.env.PAPERCLIP_HOME = "~/paperclip-home";
+  it("supports SUMMUN_HOME and explicit instance ids", () => {
+    process.env.SUMMUN_HOME = "~/paperclip-home";
 
     const home = resolvePaperclipHomeDir();
     expect(home).toBe(path.resolve(os.homedir(), "paperclip-home"));

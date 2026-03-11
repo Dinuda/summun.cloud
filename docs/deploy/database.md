@@ -42,7 +42,7 @@ cp .env.example .env
 Push the schema:
 
 ```sh
-DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip \
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/summun \
   npx drizzle-kit push
 ```
 

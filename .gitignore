@@ -8,6 +8,7 @@ coverage/
 .DS_Store
 data/
 .paperclip/
+.summun/
 .pnpm-store/
 tmp-*
 cli/tmp/

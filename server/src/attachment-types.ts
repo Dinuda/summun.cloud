@@ -2,13 +2,13 @@
  * Shared attachment content-type configuration.
  *
  * By default only image types are allowed.  Set the
- * `PAPERCLIP_ALLOWED_ATTACHMENT_TYPES` environment variable to a
+ * `SUMMUN_ALLOWED_ATTACHMENT_TYPES` environment variable to a
  * comma-separated list of MIME types or wildcard patterns to expand the
  * allowed set.
  *
  * Examples:
- *   PAPERCLIP_ALLOWED_ATTACHMENT_TYPES=image/*,application/pdf
- *   PAPERCLIP_ALLOWED_ATTACHMENT_TYPES=image/*,application/pdf,text/*
+ *   SUMMUN_ALLOWED_ATTACHMENT_TYPES=image/*,application/pdf
+ *   SUMMUN_ALLOWED_ATTACHMENT_TYPES=image/*,application/pdf,text/*
  *
  * Supported pattern syntax:
  *   - Exact types:   "application/pdf"
@@ -56,7 +56,7 @@ export function matchesContentType(contentType: string, allowedPatterns: string[
 // ---------- Module-level singletons read once at startup ----------
 
 const allowedPatterns: string[] = parseAllowedTypes(
-  process.env.PAPERCLIP_ALLOWED_ATTACHMENT_TYPES,
+  process.env.SUMMUN_ALLOWED_ATTACHMENT_TYPES,
 );
 
 /** Convenience wrapper using the process-level allowed list. */
@@ -65,4 +65,4 @@ export function isAllowedContentType(contentType: string): boolean {
 }
 
 export const MAX_ATTACHMENT_BYTES =
-  Number(process.env.PAPERCLIP_ATTACHMENT_MAX_BYTES) || 10 * 1024 * 1024;
+  Number(process.env.SUMMUN_ATTACHMENT_MAX_BYTES) || 10 * 1024 * 1024;

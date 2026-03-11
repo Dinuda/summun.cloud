@@ -454,9 +454,9 @@ describe("openclaw gateway adapter execute", () => {
       expect(payload?.idempotencyKey).toBe("run-123");
       expect(payload?.sessionKey).toBe("paperclip:issue:issue-123");
       expect(String(payload?.message ?? "")).toContain("wake now");
-      expect(String(payload?.message ?? "")).toContain("PAPERCLIP_RUN_ID=run-123");
-      expect(String(payload?.message ?? "")).toContain("PAPERCLIP_TASK_ID=task-123");
-      expect(payload?.paperclip).toEqual(
+      expect(String(payload?.message ?? "")).toContain("SUMMUN_RUN_ID=run-123");
+      expect(String(payload?.message ?? "")).toContain("SUMMUN_TASK_ID=task-123");
+      expect(payload?.summun).toEqual(
         expect.objectContaining({
           runId: "run-123",
           companyId: "company-123",

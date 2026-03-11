@@ -4,7 +4,7 @@ Guidance for human and AI contributors working in this repository.
 
 ## 1. Purpose
 
-Paperclip is a control plane for AI-agent companies.
+Summun is a control plane for AI-agent companies.
 The current implementation target is V1 and is defined in `doc/SPEC-implementation.md`.
 
 ## 2. Read This First
@@ -77,6 +77,9 @@ If you change schema/API behavior, update all impacted layers:
 
 4. Do not replace strategic docs wholesale unless asked.
 Prefer additive updates. Keep `doc/SPEC.md` and `doc/SPEC-implementation.md` aligned.
+
+5. Preserve upstream attribution and licensing.
+Do not remove upstream license/copyright notices. Keep `LICENSE` and `NOTICE` accurate when rebranding or redistributing.
 
 ## 6. Database Change Workflow
 

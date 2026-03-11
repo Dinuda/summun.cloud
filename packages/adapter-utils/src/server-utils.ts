@@ -111,15 +111,15 @@ export function buildPaperclipEnv(agent: { id: string; companyId: string }): Rec
     return host;
   };
   const vars: Record<string, string> = {
-    PAPERCLIP_AGENT_ID: agent.id,
-    PAPERCLIP_COMPANY_ID: agent.companyId,
+    SUMMUN_AGENT_ID: agent.id,
+    SUMMUN_COMPANY_ID: agent.companyId,
   };
   const runtimeHost = resolveHostForUrl(
-    process.env.PAPERCLIP_LISTEN_HOST ?? process.env.HOST ?? "localhost",
+    process.env.SUMMUN_LISTEN_HOST ?? process.env.HOST ?? "localhost",
   );
-  const runtimePort = process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3100";
-  const apiUrl = process.env.PAPERCLIP_API_URL ?? `http://${runtimeHost}:${runtimePort}`;
-  vars.PAPERCLIP_API_URL = apiUrl;
+  const runtimePort = process.env.SUMMUN_LISTEN_PORT ?? process.env.PORT ?? "3100";
+  const apiUrl = process.env.SUMMUN_API_URL ?? `http://${runtimeHost}:${runtimePort}`;
+  vars.SUMMUN_API_URL = apiUrl;
   return vars;
 }
 

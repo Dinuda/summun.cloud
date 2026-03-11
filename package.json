@@ -1,5 +1,5 @@
 {
-  "name": "paperclip",
+  "name": "summun",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,6 +17,7 @@
     "secrets:migrate-inline-env": "tsx scripts/migrate-inline-env-secrets.ts",
     "db:backup": "./scripts/backup-db.sh",
     "paperclipai": "node cli/node_modules/tsx/dist/cli.mjs cli/src/index.ts",
+    "summun": "node cli/node_modules/tsx/dist/cli.mjs cli/src/index.ts",
     "build:npm": "./scripts/build-npm.sh",
     "release:start": "./scripts/release-start.sh",
     "release": "./scripts/release.sh",

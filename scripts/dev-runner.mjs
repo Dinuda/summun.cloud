@@ -31,17 +31,17 @@ if (process.env.npm_config_authenticated_private === "true") {
 
 const env = {
   ...process.env,
-  PAPERCLIP_UI_DEV_MIDDLEWARE: "true",
+  SUMMUN_UI_DEV_MIDDLEWARE: "true",
 };
 
 if (tailscaleAuth) {
-  env.PAPERCLIP_DEPLOYMENT_MODE = "authenticated";
-  env.PAPERCLIP_DEPLOYMENT_EXPOSURE = "private";
-  env.PAPERCLIP_AUTH_BASE_URL_MODE = "auto";
+  env.SUMMUN_DEPLOYMENT_MODE = "authenticated";
+  env.SUMMUN_DEPLOYMENT_EXPOSURE = "private";
+  env.SUMMUN_AUTH_BASE_URL_MODE = "auto";
   env.HOST = "0.0.0.0";
-  console.log("[paperclip] dev mode: authenticated/private (tailscale-friendly) on 0.0.0.0");
+  console.log("[summun] dev mode: authenticated/private (tailscale-friendly) on 0.0.0.0");
 } else {
-  console.log("[paperclip] dev mode: local_trusted (default)");
+  console.log("[summun] dev mode: local_trusted (default)");
 }
 
 const pnpmBin = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -89,7 +89,7 @@ async function runPnpm(args, options = {}) {
 
 async function maybePreflightMigrations() {
   if (mode !== "watch") return;
-  if (process.env.PAPERCLIP_MIGRATION_PROMPT === "never") return;
+  if (process.env.SUMMUN_MIGRATION_PROMPT === "never") return;
 
   const status = await runPnpm(
     ["--filter", "@paperclipai/db", "exec", "tsx", "src/migration-status.ts", "--json"],
@@ -112,7 +112,7 @@ async function maybePreflightMigrations() {
     return;
   }
 
-  const autoApply = process.env.PAPERCLIP_MIGRATION_AUTO_APPLY === "true";
+  const autoApply = process.env.SUMMUN_MIGRATION_AUTO_APPLY === "true";
   let shouldApply = autoApply;
 
   if (!autoApply) {
@@ -157,7 +157,7 @@ async function maybePreflightMigrations() {
 await maybePreflightMigrations();
 
 if (mode === "watch") {
-  env.PAPERCLIP_MIGRATION_PROMPT = "never";
+  env.SUMMUN_MIGRATION_PROMPT = "never";
 }
 
 const serverScript = mode === "watch" ? "dev:watch" : "dev";

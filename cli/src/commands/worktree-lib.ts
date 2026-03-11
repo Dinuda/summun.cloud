@@ -2,7 +2,7 @@ import path from "node:path";
 import type { PaperclipConfig } from "../config/schema.js";
 import { expandHomePrefix } from "../config/home.js";
 
-export const DEFAULT_WORKTREE_HOME = "~/.paperclip-worktrees";
+export const DEFAULT_WORKTREE_HOME = "~/.summun-worktrees";
 export const WORKTREE_SEED_MODES = ["minimal", "full"] as const;
 
 export type WorktreeSeedMode = (typeof WORKTREE_SEED_MODES)[number];
@@ -95,7 +95,7 @@ export function resolveWorktreeLocalPaths(opts: {
   const cwd = path.resolve(opts.cwd);
   const homeDir = path.resolve(expandHomePrefix(opts.homeDir ?? DEFAULT_WORKTREE_HOME));
   const instanceRoot = path.resolve(homeDir, "instances", opts.instanceId);
-  const repoConfigDir = path.resolve(cwd, ".paperclip");
+  const repoConfigDir = path.resolve(cwd, ".summun");
   return {
     cwd,
     repoConfigDir,
@@ -198,11 +198,11 @@ export function buildWorktreeConfig(input: {
 
 export function buildWorktreeEnvEntries(paths: WorktreeLocalPaths): Record<string, string> {
   return {
-    PAPERCLIP_HOME: paths.homeDir,
-    PAPERCLIP_INSTANCE_ID: paths.instanceId,
-    PAPERCLIP_CONFIG: paths.configPath,
-    PAPERCLIP_CONTEXT: paths.contextPath,
-    PAPERCLIP_IN_WORKTREE: "true",
+    SUMMUN_HOME: paths.homeDir,
+    SUMMUN_INSTANCE_ID: paths.instanceId,
+    SUMMUN_CONFIG: paths.configPath,
+    SUMMUN_CONTEXT: paths.contextPath,
+    SUMMUN_IN_WORKTREE: "true",
   };
 }
 

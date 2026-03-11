@@ -68,14 +68,14 @@ export interface StartedServer {
 
 export async function startServer(): Promise<StartedServer> {
   const config = loadConfig();
-  if (process.env.PAPERCLIP_SECRETS_PROVIDER === undefined) {
-    process.env.PAPERCLIP_SECRETS_PROVIDER = config.secretsProvider;
+  if (process.env.SUMMUN_SECRETS_PROVIDER === undefined) {
+    process.env.SUMMUN_SECRETS_PROVIDER = config.secretsProvider;
   }
-  if (process.env.PAPERCLIP_SECRETS_STRICT_MODE === undefined) {
-    process.env.PAPERCLIP_SECRETS_STRICT_MODE = config.secretsStrictMode ? "true" : "false";
+  if (process.env.SUMMUN_SECRETS_STRICT_MODE === undefined) {
+    process.env.SUMMUN_SECRETS_STRICT_MODE = config.secretsStrictMode ? "true" : "false";
   }
-  if (process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE === undefined) {
-    process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE = config.secretsMasterKeyFilePath;
+  if (process.env.SUMMUN_SECRETS_MASTER_KEY_FILE === undefined) {
+    process.env.SUMMUN_SECRETS_MASTER_KEY_FILE = config.secretsMasterKeyFilePath;
   }
   
   type MigrationSummary =
@@ -93,8 +93,8 @@ export async function startServer(): Promise<StartedServer> {
   }
   
   async function promptApplyMigrations(migrations: string[]): Promise<boolean> {
-    if (process.env.PAPERCLIP_MIGRATION_PROMPT === "never") return false;
-    if (process.env.PAPERCLIP_MIGRATION_AUTO_APPLY === "true") return true;
+    if (process.env.SUMMUN_MIGRATION_PROMPT === "never") return false;
+    if (process.env.SUMMUN_MIGRATION_AUTO_APPLY === "true") return true;
     if (!stdin.isTTY || !stdout.isTTY) return true;
   
     const prompt = createInterface({ input: stdin, output: stdout });
@@ -261,7 +261,7 @@ export async function startServer(): Promise<StartedServer> {
     let port = configuredPort;
     const embeddedPostgresLogBuffer: string[] = [];
     const EMBEDDED_POSTGRES_LOG_BUFFER_LIMIT = 120;
-    const verboseEmbeddedPostgresLogs = process.env.PAPERCLIP_EMBEDDED_POSTGRES_VERBOSE === "true";
+    const verboseEmbeddedPostgresLogs = process.env.SUMMUN_EMBEDDED_POSTGRES_VERBOSE === "true";
     const appendEmbeddedPostgresLog = (message: unknown) => {
       const text = typeof message === "string" ? message : message instanceof Error ? message.message : String(message ?? "");
       for (const lineRaw of text.split(/\r?\n/)) {
@@ -428,10 +428,10 @@ export async function startServer(): Promise<StartedServer> {
       resolveBetterAuthSessionFromHeaders,
     } = await import("./auth/better-auth.js");
     const betterAuthSecret =
-      process.env.BETTER_AUTH_SECRET?.trim() ?? process.env.PAPERCLIP_AGENT_JWT_SECRET?.trim();
+      process.env.BETTER_AUTH_SECRET?.trim() ?? process.env.SUMMUN_AGENT_JWT_SECRET?.trim();
     if (!betterAuthSecret) {
       throw new Error(
-        "authenticated mode requires BETTER_AUTH_SECRET (or PAPERCLIP_AGENT_JWT_SECRET) to be set",
+        "authenticated mode requires BETTER_AUTH_SECRET (or SUMMUN_AGENT_JWT_SECRET) to be set",
       );
     }
     const derivedTrustedOrigins = deriveAuthTrustedOrigins(config);
@@ -487,9 +487,9 @@ export async function startServer(): Promise<StartedServer> {
     runtimeListenHost === "0.0.0.0" || runtimeListenHost === "::"
       ? "localhost"
       : runtimeListenHost;
-  process.env.PAPERCLIP_LISTEN_HOST = runtimeListenHost;
-  process.env.PAPERCLIP_LISTEN_PORT = String(listenPort);
-  process.env.PAPERCLIP_API_URL = `http://${runtimeApiHost}:${listenPort}`;
+  process.env.SUMMUN_LISTEN_HOST = runtimeListenHost;
+  process.env.SUMMUN_LISTEN_PORT = String(listenPort);
+  process.env.SUMMUN_API_URL = `http://${runtimeApiHost}:${listenPort}`;
   
   setupLiveEventsWebSocketServer(server, db as any, {
     deploymentMode: config.deploymentMode,
@@ -596,7 +596,7 @@ export async function startServer(): Promise<StartedServer> {
     server.listen(listenPort, config.host, () => {
       server.off("error", onError);
       logger.info(`Server listening on ${config.host}:${listenPort}`);
-      if (process.env.PAPERCLIP_OPEN_ON_LISTEN === "true") {
+      if (process.env.SUMMUN_OPEN_ON_LISTEN === "true") {
         const openHost = config.host === "0.0.0.0" || config.host === "::" ? "127.0.0.1" : config.host;
         const url = `http://${openHost}:${listenPort}`;
         void import("open")
@@ -670,7 +670,7 @@ export async function startServer(): Promise<StartedServer> {
     server,
     host: config.host,
     listenPort,
-    apiUrl: process.env.PAPERCLIP_API_URL ?? `http://${runtimeApiHost}:${listenPort}`,
+    apiUrl: process.env.SUMMUN_API_URL ?? `http://${runtimeApiHost}:${listenPort}`,
     databaseUrl: activeDatabaseConnectionString,
   };
 }

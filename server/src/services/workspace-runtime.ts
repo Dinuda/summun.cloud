@@ -246,24 +246,24 @@ function buildWorkspaceCommandEnv(input: {
   created: boolean;
 }) {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  env.PAPERCLIP_WORKSPACE_CWD = input.worktreePath;
-  env.PAPERCLIP_WORKSPACE_PATH = input.worktreePath;
-  env.PAPERCLIP_WORKSPACE_WORKTREE_PATH = input.worktreePath;
-  env.PAPERCLIP_WORKSPACE_BRANCH = input.branchName;
-  env.PAPERCLIP_WORKSPACE_BASE_CWD = input.base.baseCwd;
-  env.PAPERCLIP_WORKSPACE_REPO_ROOT = input.repoRoot;
-  env.PAPERCLIP_WORKSPACE_SOURCE = input.base.source;
-  env.PAPERCLIP_WORKSPACE_REPO_REF = input.base.repoRef ?? "";
-  env.PAPERCLIP_WORKSPACE_REPO_URL = input.base.repoUrl ?? "";
-  env.PAPERCLIP_WORKSPACE_CREATED = input.created ? "true" : "false";
-  env.PAPERCLIP_PROJECT_ID = input.base.projectId ?? "";
-  env.PAPERCLIP_PROJECT_WORKSPACE_ID = input.base.workspaceId ?? "";
-  env.PAPERCLIP_AGENT_ID = input.agent.id;
-  env.PAPERCLIP_AGENT_NAME = input.agent.name;
-  env.PAPERCLIP_COMPANY_ID = input.agent.companyId;
-  env.PAPERCLIP_ISSUE_ID = input.issue?.id ?? "";
-  env.PAPERCLIP_ISSUE_IDENTIFIER = input.issue?.identifier ?? "";
-  env.PAPERCLIP_ISSUE_TITLE = input.issue?.title ?? "";
+  env.SUMMUN_WORKSPACE_CWD = input.worktreePath;
+  env.SUMMUN_WORKSPACE_PATH = input.worktreePath;
+  env.SUMMUN_WORKSPACE_WORKTREE_PATH = input.worktreePath;
+  env.SUMMUN_WORKSPACE_BRANCH = input.branchName;
+  env.SUMMUN_WORKSPACE_BASE_CWD = input.base.baseCwd;
+  env.SUMMUN_WORKSPACE_REPO_ROOT = input.repoRoot;
+  env.SUMMUN_WORKSPACE_SOURCE = input.base.source;
+  env.SUMMUN_WORKSPACE_REPO_REF = input.base.repoRef ?? "";
+  env.SUMMUN_WORKSPACE_REPO_URL = input.base.repoUrl ?? "";
+  env.SUMMUN_WORKSPACE_CREATED = input.created ? "true" : "false";
+  env.SUMMUN_PROJECT_ID = input.base.projectId ?? "";
+  env.SUMMUN_PROJECT_WORKSPACE_ID = input.base.workspaceId ?? "";
+  env.SUMMUN_AGENT_ID = input.agent.id;
+  env.SUMMUN_AGENT_NAME = input.agent.name;
+  env.SUMMUN_COMPANY_ID = input.agent.companyId;
+  env.SUMMUN_ISSUE_ID = input.issue?.id ?? "";
+  env.SUMMUN_ISSUE_IDENTIFIER = input.issue?.identifier ?? "";
+  env.SUMMUN_ISSUE_TITLE = input.issue?.title ?? "";
   return env;
 }
 
@@ -362,7 +362,7 @@ export async function realizeExecutionWorkspace(input: {
   const configuredParentDir = asString(rawStrategy.worktreeParentDir, "");
   const worktreeParentDir = configuredParentDir
     ? resolveConfiguredPath(configuredParentDir, repoRoot)
-    : path.join(repoRoot, ".paperclip", "worktrees");
+    : path.join(repoRoot, ".summun", "worktrees");
   const worktreePath = path.join(worktreeParentDir, branchName);
   const baseRef = asString(rawStrategy.baseRef, input.base.repoRef ?? "HEAD");
 

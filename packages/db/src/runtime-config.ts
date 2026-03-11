@@ -22,7 +22,7 @@ export type ResolvedDatabaseTarget =
   | {
       mode: "postgres";
       connectionString: string;
-      source: "DATABASE_URL" | "paperclip-env" | "config.database.connectionString";
+      source: "DATABASE_URL" | "summun-env" | "config.database.connectionString";
       configPath: string;
       envPath: string;
     }
@@ -42,15 +42,15 @@ function expandHomePrefix(value: string): string {
 }
 
 function resolvePaperclipHomeDir(): string {
-  const envHome = process.env.PAPERCLIP_HOME?.trim();
+  const envHome = process.env.SUMMUN_HOME?.trim();
   if (envHome) return path.resolve(expandHomePrefix(envHome));
-  return path.resolve(os.homedir(), ".paperclip");
+  return path.resolve(os.homedir(), ".summun");
 }
 
 function resolvePaperclipInstanceId(): string {
-  const raw = process.env.PAPERCLIP_INSTANCE_ID?.trim() || DEFAULT_INSTANCE_ID;
+  const raw = process.env.SUMMUN_INSTANCE_ID?.trim() || DEFAULT_INSTANCE_ID;
   if (!INSTANCE_ID_RE.test(raw)) {
-    throw new Error(`Invalid PAPERCLIP_INSTANCE_ID '${raw}'.`);
+    throw new Error(`Invalid SUMMUN_INSTANCE_ID '${raw}'.`);
   }
   return raw;
 }
@@ -76,7 +76,7 @@ function findConfigFileFromAncestors(startDir: string): string | null {
   let currentDir = path.resolve(startDir);
 
   while (true) {
-    const candidate = path.resolve(currentDir, ".paperclip", CONFIG_BASENAME);
+    const candidate = path.resolve(currentDir, ".summun", CONFIG_BASENAME);
     if (existsSync(candidate)) return candidate;
 
     const nextDir = path.resolve(currentDir, "..");
@@ -86,14 +86,33 @@ function findConfigFileFromAncestors(startDir: string): string | null {
 }
 
 function resolvePaperclipConfigPath(): string {
-  if (process.env.PAPERCLIP_CONFIG?.trim()) {
-    return path.resolve(process.env.PAPERCLIP_CONFIG.trim());
+  if (process.env.SUMMUN_CONFIG?.trim()) {
+    return path.resolve(process.env.SUMMUN_CONFIG.trim());
   }
   return findConfigFileFromAncestors(process.cwd()) ?? resolveDefaultConfigPath();
 }
 
-function resolvePaperclipEnvPath(configPath: string): string {
-  return path.resolve(path.dirname(configPath), ENV_BASENAME);
+function findEnvFileFromAncestors(startDir: string): string | null {
+  let currentDir = path.resolve(startDir);
+
+  while (true) {
+    const candidate = path.resolve(currentDir, ENV_BASENAME);
+    if (existsSync(candidate)) return candidate;
+
+    const nextDir = path.resolve(currentDir, "..");
+    if (nextDir === currentDir) return null;
+    currentDir = nextDir;
+  }
+}
+
+function resolvePaperclipEnvPath(): string {
+  // If SUMMUN_CONFIG points to an explicit config file, look for .env next to it.
+  // Otherwise walk up from cwd to find .env (handles cases where the server process
+  // starts from a subdirectory like server/ rather than the project root).
+  if (process.env.SUMMUN_CONFIG?.trim()) {
+    return path.resolve(path.dirname(path.resolve(process.env.SUMMUN_CONFIG.trim())), ENV_BASENAME);
+  }
+  return findEnvFileFromAncestors(process.cwd()) ?? path.resolve(process.cwd(), ENV_BASENAME);
 }
 
 function parseEnvFile(contents: string): Record<string, string> {
@@ -214,7 +233,7 @@ function readConfig(configPath: string): PartialConfig | null {
 
 export function resolveDatabaseTarget(): ResolvedDatabaseTarget {
   const configPath = resolvePaperclipConfigPath();
-  const envPath = resolvePaperclipEnvPath(configPath);
+  const envPath = resolvePaperclipEnvPath();
   const envEntries = readEnvEntries(envPath);
 
   const envUrl = process.env.DATABASE_URL?.trim();
@@ -233,7 +252,7 @@ export function resolveDatabaseTarget(): ResolvedDatabaseTarget {
     return {
       mode: "postgres",
       connectionString: fileEnvUrl,
-      source: "paperclip-env",
+      source: "summun-env",
       configPath,
       envPath,
     };

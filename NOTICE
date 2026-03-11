@@ -1,0 +1,17 @@
+Summun
+Copyright (c) 2026 Summun contributors
+
+This project is a fork of Paperclip:
+https://github.com/paperclipai/paperclip
+
+Original upstream work:
+Copyright (c) 2025 Paperclip AI and contributors
+
+License:
+This repository is distributed under the MIT License.
+See the LICENSE file for the full license text.
+
+Attribution policy:
+- Keep upstream license and copyright notices intact.
+- Keep this NOTICE file when redistributing substantial portions of the Software.
+- Document major downstream changes in commit history and release notes.
