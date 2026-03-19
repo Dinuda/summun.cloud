@@ -19,4 +19,28 @@ export interface DashboardSummary {
   };
   pendingApprovals: number;
   staleTasks: number;
+  metaOps?: {
+    sources: {
+      total: number;
+      active: number;
+      paused: number;
+      failures: number;
+      lastWebhookAt: string | null;
+    };
+    events24h: {
+      received: number;
+      processed: number;
+      rejected: number;
+      duplicate: number;
+      failed: number;
+    };
+    actionItems: {
+      pendingReview: number;
+      pendingApproval: number;
+      approved: number;
+      rejected: number;
+      cancelled: number;
+    };
+    pendingApprovals: number;
+  };
 }

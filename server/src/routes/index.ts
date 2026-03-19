@@ -12,3 +12,6 @@ export { dashboardRoutes } from "./dashboard.js";
 export { sidebarBadgeRoutes } from "./sidebar-badges.js";
 export { llmRoutes } from "./llms.js";
 export { accessRoutes } from "./access.js";
+export { externalEventSourceRoutes } from "./external-event-sources.js";
+export { webhooksMetaAdsRoutes } from "./webhooks-meta-ads.js";
+export { webhooksExternalRoutes } from "./webhooks-external.js";

@@ -7,6 +7,7 @@ import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { heartbeatsApi } from "../api/heartbeats";
+import { externalEventSourcesApi } from "../api/externalEventSources";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -79,8 +80,31 @@ export function Dashboard() {
     enabled: !!selectedCompanyId,
   });
 
+  const {
+    data: metaOps,
+    isLoading: metaOpsLoading,
+    isError: metaOpsIsError,
+    error: metaOpsError,
+    dataUpdatedAt: metaOpsUpdatedAt,
+  } = useQuery({
+    queryKey: queryKeys.external.metaOps(selectedCompanyId!, 10),
+    queryFn: () => externalEventSourcesApi.metaOps(selectedCompanyId!, 10),
+    enabled: !!selectedCompanyId,
+  });
+
   const recentIssues = issues ? getRecentIssues(issues) : [];
   const recentActivity = useMemo(() => (activity ?? []).slice(0, 10), [activity]);
+  const lastWebhookAtMs = metaOps?.summary.sources.lastWebhookAt
+    ? Date.parse(metaOps.summary.sources.lastWebhookAt)
+    : NaN;
+  const hasActiveMetaSources = (metaOps?.summary.sources.active ?? 0) > 0;
+  const staleWebhookWindowMs = 6 * 60 * 60 * 1000;
+  const staleDataWindowMs = 2 * 60 * 1000;
+  const metaOpsWebhookStale =
+    hasActiveMetaSources &&
+    Number.isFinite(lastWebhookAtMs) &&
+    Date.now() - lastWebhookAtMs > staleWebhookWindowMs;
+  const metaOpsPanelStale = metaOpsUpdatedAt > 0 && Date.now() - metaOpsUpdatedAt > staleDataWindowMs;
 
   useEffect(() => {
     for (const timer of activityAnimationTimersRef.current) {
@@ -274,6 +298,99 @@ export function Dashboard() {
             <ChartCard title="Success Rate" subtitle="Last 14 days">
               <SuccessRateChart runs={runs ?? []} />
             </ChartCard>
+          </div>
+
+          <div className="rounded-md border border-border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Meta Ads Ops
+              </h3>
+              <Link to="/company/settings" className="text-xs text-muted-foreground hover:text-foreground">
+                Configure sources
+              </Link>
+            </div>
+
+            {metaOpsLoading && (
+              <p className="text-sm text-muted-foreground">Loading Meta source health...</p>
+            )}
+
+            {metaOpsIsError && (
+              <p className="text-sm text-destructive">
+                {metaOpsError instanceof Error ? metaOpsError.message : "Failed to load Meta ops."}
+              </p>
+            )}
+
+            {metaOps && (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                  <div className="rounded border border-border px-2 py-1.5">
+                    <div className="text-muted-foreground">Sources</div>
+                    <div className="font-medium">{metaOps.summary.sources.active}/{metaOps.summary.sources.total} active</div>
+                  </div>
+                  <div className="rounded border border-border px-2 py-1.5">
+                    <div className="text-muted-foreground">Events (24h)</div>
+                    <div className="font-medium">{metaOps.summary.events24h.received} received</div>
+                  </div>
+                  <div className="rounded border border-border px-2 py-1.5">
+                    <div className="text-muted-foreground">Pending Review</div>
+                    <div className="font-medium">{metaOps.summary.actionItems.pendingReview}</div>
+                  </div>
+                  <div className="rounded border border-border px-2 py-1.5">
+                    <div className="text-muted-foreground">Pending Approval</div>
+                    <div className="font-medium">{metaOps.summary.actionItems.pendingApproval}</div>
+                  </div>
+                  <div className="rounded border border-border px-2 py-1.5">
+                    <div className="text-muted-foreground">Approved</div>
+                    <div className="font-medium">{metaOps.summary.actionItems.approved}</div>
+                  </div>
+                </div>
+
+                {metaOps.summary.sources.total === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No Meta sources configured yet. Create one in Company Settings.
+                  </p>
+                )}
+
+                {metaOpsWebhookStale && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Active source has not received a webhook for more than 6 hours.
+                  </p>
+                )}
+
+                {metaOpsPanelStale && !metaOpsWebhookStale && (
+                  <p className="text-xs text-muted-foreground">
+                    Meta ops data may be stale. A refresh is pending.
+                  </p>
+                )}
+
+                {metaOps.recentActionItems.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Recent Action Items</p>
+                    <div className="divide-y divide-border rounded border border-border">
+                      {metaOps.recentActionItems.slice(0, 5).map((item) => (
+                        <div key={item.id} className="px-3 py-2 text-xs flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            {item.issueId ? (
+                              <Link to={`/issues/${item.issueId}`} className="truncate block hover:underline">
+                                {item.title}
+                              </Link>
+                            ) : (
+                              <span className="truncate block">{item.title}</span>
+                            )}
+                            {item.approvalId ? (
+                              <Link to={`/approvals/${item.approvalId}`} className="text-muted-foreground hover:underline">
+                                approval {item.approvalId.slice(0, 8)}
+                              </Link>
+                            ) : null}
+                          </div>
+                          <span className="text-muted-foreground shrink-0">{item.status.replace(/_/g, " ")}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">

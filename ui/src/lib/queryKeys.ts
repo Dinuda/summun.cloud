@@ -48,6 +48,16 @@ export const queryKeys = {
     comments: (approvalId: string) => ["approvals", "comments", approvalId] as const,
     issues: (approvalId: string) => ["approvals", "issues", approvalId] as const,
   },
+  external: {
+    plugins: ["external", "plugins"] as const,
+    sources: (companyId: string, provider?: string, status?: string) =>
+      ["external", "sources", companyId, provider ?? "__all__", status ?? "__all__"] as const,
+    source: (id: string) => ["external", "source", id] as const,
+    pluginConfig: (companyId: string, pluginId: string) =>
+      ["external", "plugin-config", companyId, pluginId] as const,
+    metaOps: (companyId: string, limit: number = 20) =>
+      ["external", "meta-ops", companyId, limit] as const,
+  },
   access: {
     joinRequests: (companyId: string, status: string = "pending_approval") =>
       ["access", "join-requests", companyId, status] as const,

@@ -1,13 +1,15 @@
-import { UserPlus, Lightbulb, ShieldCheck } from "lucide-react";
+import { UserPlus, Lightbulb, ShieldCheck, ClipboardCheck } from "lucide-react";
 
 export const typeLabel: Record<string, string> = {
   hire_agent: "Hire Agent",
   approve_ceo_strategy: "CEO Strategy",
+  approve_action_item: "Action Item",
 };
 
 export const typeIcon: Record<string, typeof UserPlus> = {
   hire_agent: UserPlus,
   approve_ceo_strategy: Lightbulb,
+  approve_action_item: ClipboardCheck,
 };
 
 export const defaultTypeIcon = ShieldCheck;
@@ -69,7 +71,28 @@ export function CeoStrategyPayload({ payload }: { payload: Record<string, unknow
   );
 }
 
+export function ActionItemApprovalPayload({ payload }: { payload: Record<string, unknown> }) {
+  return (
+    <div className="mt-3 space-y-1.5 text-sm">
+      <PayloadField label="Action Item" value={payload.actionItemId} />
+      <PayloadField label="Issue" value={payload.issueId} />
+      <PayloadField label="Confidence" value={payload.confidence} />
+      {payload.summary ? (
+        <div className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground whitespace-pre-wrap">
+          {String(payload.summary)}
+        </div>
+      ) : null}
+      {payload.recommendation ? (
+        <div className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground whitespace-pre-wrap">
+          {String(payload.recommendation)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function ApprovalPayloadRenderer({ type, payload }: { type: string; payload: Record<string, unknown> }) {
   if (type === "hire_agent") return <HireAgentPayload payload={payload} />;
+  if (type === "approve_action_item") return <ActionItemApprovalPayload payload={payload} />;
   return <CeoStrategyPayload payload={payload} />;
 }

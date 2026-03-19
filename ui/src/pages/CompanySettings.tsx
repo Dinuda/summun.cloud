@@ -1,13 +1,30 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
+import { agentsApi } from "../api/agents";
+import { externalEventSourcesApi } from "../api/externalEventSources";
+import { secretsApi } from "../api/secrets";
+import { ApiError } from "../api/client";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Settings, Check } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
+import {
+  externalRulesConfigSchema,
+  type CompanyExternalPluginConfigUpsertInput,
+  type CompanySecret,
+  type CreateExternalEventSource,
+  type ExternalEventSource,
+  type ExternalMetaLeadFormSummary,
+  type ExternalMetaPageSummary,
+  type ExternalPluginConfigField,
+  type ExternalPluginMetadata,
+  type MetaConnectSourceInput,
+  type UpdateExternalEventSource,
+} from "@paperclipai/shared";
 import {
   Field,
   ToggleField,
@@ -19,6 +36,12 @@ type AgentSnippetInput = {
   connectionCandidates?: string[] | null;
   testResolutionUrl?: string | null;
 };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string) {
+  return UUID_RE.test(value);
+}
 
 export function CompanySettings() {
   const {
@@ -47,6 +70,88 @@ export function CompanySettings() {
   const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [sourceName, setSourceName] = useState("");
+  const [sourceReviewerAgentId, setSourceReviewerAgentId] = useState("");
+  const [sourceRulesJson, setSourceRulesJson] = useState(
+    JSON.stringify({ mode: "any", rules: [] }, null, 2),
+  );
+  const [sourceTemplate, setSourceTemplate] = useState("");
+  const [sourcePluginId, setSourcePluginId] = useState("");
+  const [sourceConfigValues, setSourceConfigValues] = useState<Record<string, string>>({});
+  const [sourceFormError, setSourceFormError] = useState<string | null>(null);
+  const [sourceSaving, setSourceSaving] = useState(false);
+  const [copiedWebhookSourceId, setCopiedWebhookSourceId] = useState<string | null>(null);
+  const [metaUserAccessTokenSecretId, setMetaUserAccessTokenSecretId] = useState("");
+  const [metaPageId, setMetaPageId] = useState("");
+  const [metaFormId, setMetaFormId] = useState("");
+  const [metaPages, setMetaPages] = useState<ExternalMetaPageSummary[]>([]);
+  const [metaForms, setMetaForms] = useState<ExternalMetaLeadFormSummary[]>([]);
+  const [metaConnectMessage, setMetaConnectMessage] = useState<string | null>(null);
+  const [metaAppId, setMetaAppId] = useState("");
+  const [metaAppSecretId, setMetaAppSecretId] = useState("");
+  const [metaVerifyTokenSecretId, setMetaVerifyTokenSecretId] = useState("");
+  const [metaGraphApiVersion, setMetaGraphApiVersion] = useState("v22.0");
+  const [metaAppConfigMessage, setMetaAppConfigMessage] = useState<string | null>(null);
+  const [metaAppConfigError, setMetaAppConfigError] = useState<string | null>(null);
+  const [metaAppConfigDirty, setMetaAppConfigDirty] = useState(false);
+  const metaAppConfigDirtyRef = useRef(false);
+
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId ?? ""),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: plugins } = useQuery({
+    queryKey: queryKeys.external.plugins,
+    queryFn: () => externalEventSourcesApi.plugins(),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: externalSources, isLoading: sourcesLoading } = useQuery({
+    queryKey: queryKeys.external.sources(selectedCompanyId ?? "", sourcePluginId || undefined),
+    queryFn: () =>
+      externalEventSourcesApi.list(selectedCompanyId!, sourcePluginId ? { pluginId: sourcePluginId } : undefined),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: companySecrets } = useQuery({
+    queryKey: queryKeys.secrets.list(selectedCompanyId ?? ""),
+    queryFn: () => secretsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: metaPluginConfig } = useQuery({
+    queryKey: queryKeys.external.pluginConfig(selectedCompanyId ?? "", "meta_leadgen"),
+    queryFn: async () => {
+      try {
+        return await externalEventSourcesApi.getCompanyPluginConfig(selectedCompanyId!, "meta_leadgen");
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    enabled: !!selectedCompanyId,
+  });
+
+  const activePlugin = useMemo(
+    () => (plugins ?? []).find((plugin) => plugin.pluginId === sourcePluginId) ?? null,
+    [plugins, sourcePluginId],
+  );
+
+  const hasMetaCompanyConfig =
+    metaAppId.trim().length > 0 &&
+    metaAppSecretId.trim().length > 0 &&
+    metaVerifyTokenSecretId.trim().length > 0;
+
+  useEffect(() => {
+    if (!plugins || plugins.length === 0) return;
+    if (sourcePluginId) return;
+    const plugin = plugins[0];
+    setSourcePluginId(plugin.pluginId);
+    setSourceConfigValues(buildDefaultSourceConfigValues(plugin));
+  }, [plugins, sourcePluginId]);
 
   const generalDirty =
     !!selectedCompany &&
@@ -133,7 +238,337 @@ export function CompanySettings() {
     setInviteSnippet(null);
     setSnippetCopied(false);
     setSnippetCopyDelightId(0);
+    setMetaAppConfigMessage(null);
+    setMetaAppConfigError(null);
+    metaAppConfigDirtyRef.current = false;
+    setMetaAppConfigDirty(false);
+    resetSourceForm();
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const oauthStatus = url.searchParams.get("meta_oauth");
+    if (!oauthStatus) return;
+
+    const oauthCompanyId = url.searchParams.get("meta_oauth_company_id");
+    if (oauthCompanyId && oauthCompanyId !== selectedCompanyId) {
+      setSelectedCompanyId(oauthCompanyId);
+    }
+
+    if (oauthStatus === "success") {
+      setSourcePluginId("meta_leadgen");
+      const userTokenSecretId = url.searchParams.get("meta_user_token_secret_id");
+      if (userTokenSecretId) setMetaUserAccessTokenSecretId(userTokenSecretId);
+      setMetaConnectMessage("Meta login complete. Load pages to continue.");
+      setSourceFormError(null);
+    } else {
+      const message = url.searchParams.get("meta_oauth_error") ?? "Meta OAuth failed.";
+      setSourceFormError(message);
+      setMetaConnectMessage(null);
+    }
+
+    const keysToDelete = [
+      "meta_oauth",
+      "meta_oauth_company_id",
+      "meta_user_token_secret_id",
+      "meta_oauth_error",
+    ];
+    for (const key of keysToDelete) url.searchParams.delete(key);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [selectedCompanyId, setSelectedCompanyId]);
+
+  useEffect(() => {
+    if (metaAppConfigDirtyRef.current || metaAppConfigDirty) return;
+    if (!metaPluginConfig) {
+      setMetaAppId("");
+      setMetaAppSecretId("");
+      setMetaVerifyTokenSecretId("");
+      setMetaGraphApiVersion("v22.0");
+      return;
+    }
+    const config = asRecord(metaPluginConfig.config) ?? {};
+    const appSecret = asRecord(config.appSecret);
+    const verifyTokenSecret = asRecord(config.verifyTokenSecret);
+    setMetaAppId(typeof config.metaAppId === "string" ? config.metaAppId : "");
+    setMetaAppSecretId(typeof appSecret?.secretId === "string" ? appSecret.secretId : "");
+    setMetaVerifyTokenSecretId(typeof verifyTokenSecret?.secretId === "string" ? verifyTokenSecret.secretId : "");
+    setMetaGraphApiVersion(
+      typeof config.graphApiVersion === "string" && config.graphApiVersion.length > 0
+        ? config.graphApiVersion
+        : "v22.0",
+    );
+  }, [metaPluginConfig, metaAppConfigDirty]);
+
+  function resetSourceForm() {
+    const plugin = plugins?.find((item) => item.pluginId === sourcePluginId) ?? plugins?.[0] ?? null;
+    setEditingSourceId(null);
+    setSourceName("");
+    setSourceReviewerAgentId("");
+    setSourceRulesJson(JSON.stringify({ mode: "any", rules: [] }, null, 2));
+    setSourceTemplate("");
+    setSourcePluginId(plugin?.pluginId ?? "");
+    setSourceConfigValues(plugin ? buildDefaultSourceConfigValues(plugin) : {});
+    setSourceFormError(null);
+    setMetaUserAccessTokenSecretId("");
+    setMetaPageId("");
+    setMetaFormId("");
+    setMetaPages([]);
+    setMetaForms([]);
+    setMetaConnectMessage(null);
+  }
+
+  function hydrateSourceForm(source: ExternalEventSource) {
+    const plugin = plugins?.find((item) => item.pluginId === source.pluginId) ?? null;
+    const sourceMeta = asRecord(source.metadata);
+    const metaConnection = asRecord(sourceMeta?.metaConnection);
+    setEditingSourceId(source.id);
+    setSourceName(source.name);
+    setSourceReviewerAgentId(source.reviewerAgentId ?? "");
+    setSourceRulesJson(JSON.stringify(source.rulesConfig ?? { mode: "any", rules: [] }, null, 2));
+    setSourceTemplate(source.llmReviewTemplate ?? "");
+    setSourcePluginId(source.pluginId);
+    setSourceConfigValues(buildSourceConfigValuesForEdit(source, plugin));
+    setSourceFormError(null);
+    setMetaPageId(typeof metaConnection?.pageId === "string" ? metaConnection.pageId : "");
+    setMetaFormId(typeof metaConnection?.formId === "string" ? metaConnection.formId : "");
+    setMetaPages([]);
+    setMetaForms([]);
+    setMetaConnectMessage(null);
+  }
+
+  function formatTime(value: string | Date | null | undefined) {
+    if (!value) return "never";
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "never";
+    return date.toLocaleString();
+  }
+
+  function webhookUrlForSource(source: ExternalEventSource) {
+    if (source.pluginId === "meta_leadgen") {
+      return `${window.location.origin}/api/webhooks/meta_leadgen/company/${source.companyId}`;
+    }
+    return `${window.location.origin}/api/webhooks/${source.pluginId}/${source.id}`;
+  }
+
+  async function handleCopyWebhookUrl(source: ExternalEventSource) {
+    const url = webhookUrlForSource(source);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedWebhookSourceId(source.id);
+      setTimeout(() => setCopiedWebhookSourceId((current) => (current === source.id ? null : current)), 1800);
+    } catch {
+      setCopiedWebhookSourceId(null);
+    }
+  }
+
+  const pauseSourceMutation = useMutation({
+    mutationFn: (sourceId: string) => externalEventSourcesApi.pause(sourceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.external.sources(selectedCompanyId ?? "", sourcePluginId || undefined),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId ?? "") });
+    },
+  });
+
+  const resumeSourceMutation = useMutation({
+    mutationFn: (sourceId: string) => externalEventSourcesApi.resume(sourceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.external.sources(selectedCompanyId ?? "", sourcePluginId || undefined),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId ?? "") });
+    },
+  });
+
+  const deleteSourceMutation = useMutation({
+    mutationFn: (sourceId: string) => externalEventSourcesApi.remove(sourceId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.external.sources(selectedCompanyId ?? "", sourcePluginId || undefined),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["external", "meta-ops", selectedCompanyId ?? ""],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboard(selectedCompanyId ?? ""),
+      });
+      if (editingSourceId) {
+        const remaining = (externalSources ?? []).filter((source) => source.id !== editingSourceId);
+        if (remaining.length === 0) {
+          resetSourceForm();
+        }
+      }
+    },
+    onError: (err) => {
+      setSourceFormError(err instanceof Error ? err.message : "Failed to delete source.");
+    },
+  });
+
+  const listMetaPagesMutation = useMutation({
+    mutationFn: (input: { userAccessTokenSecretId: string }) =>
+      externalEventSourcesApi.listMetaPages(selectedCompanyId!, input),
+    onSuccess: (pages) => {
+      setMetaPages(pages);
+      if (pages.length === 0) {
+        setMetaPageId("");
+        setMetaForms([]);
+        setMetaFormId("");
+        return;
+      }
+      setMetaPageId((current) => (current && pages.some((page) => page.id === current) ? current : pages[0]!.id));
+    },
+    onError: (err) => {
+      setSourceFormError(err instanceof Error ? err.message : "Failed to load Meta pages.");
+    },
+  });
+
+  const listMetaFormsMutation = useMutation({
+    mutationFn: (input: { userAccessTokenSecretId: string; pageId: string }) =>
+      externalEventSourcesApi.listMetaLeadForms(selectedCompanyId!, input),
+    onSuccess: (forms) => {
+      setMetaForms(forms);
+      setMetaFormId((current) => (current && forms.some((form) => form.id === current) ? current : ""));
+    },
+    onError: (err) => {
+      setSourceFormError(err instanceof Error ? err.message : "Failed to load Meta forms.");
+    },
+  });
+
+  const connectMetaSourceMutation = useMutation({
+    mutationFn: (payload: MetaConnectSourceInput) =>
+      externalEventSourcesApi.connectMetaSource(selectedCompanyId!, payload),
+    onSuccess: async (result) => {
+      setMetaConnectMessage(
+        `Connected ${result.page.name}${result.formId ? ` (form ${result.formId})` : ""}. Source is ready.`,
+      );
+      hydrateSourceForm(result.source);
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.external.sources(selectedCompanyId ?? "", sourcePluginId || undefined),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["external", "meta-ops", selectedCompanyId ?? ""],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboard(selectedCompanyId ?? ""),
+      });
+    },
+    onError: (err) => {
+      setSourceFormError(err instanceof Error ? err.message : "Failed to connect Meta source.");
+    },
+  });
+
+  const startMetaOauthMutation = useMutation({
+    mutationFn: () =>
+      externalEventSourcesApi.startMetaOauth(selectedCompanyId!, {
+        returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+      }),
+    onSuccess: (result) => {
+      window.location.assign(result.authorizeUrl);
+    },
+    onError: (err) => {
+      setSourceFormError(err instanceof Error ? err.message : "Failed to start Meta OAuth.");
+    },
+  });
+
+  const saveMetaAppConfigMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedCompanyId) {
+        throw new Error("Select a company before saving Meta configuration.");
+      }
+      const ensureSecretId = async (
+        rawInput: string,
+        opts: { label: string; managedName: string; description: string },
+      ) => {
+        const trimmed = rawInput.trim();
+        if (!trimmed) {
+          throw new Error(`${opts.label} is required.`);
+        }
+        if (isUuid(trimmed)) {
+          return trimmed;
+        }
+
+        const existingManaged =
+          (companySecrets ?? []).find(
+            (secret) => secret.name.trim().toLowerCase() === opts.managedName.trim().toLowerCase(),
+          ) ?? null;
+        if (existingManaged) {
+          const rotated = await secretsApi.rotate(existingManaged.id, { value: trimmed });
+          return rotated.id;
+        }
+
+        try {
+          const created = await secretsApi.create(selectedCompanyId, {
+            name: opts.managedName,
+            value: trimmed,
+            description: opts.description,
+          });
+          return created.id;
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 409) {
+            const freshSecrets = await secretsApi.list(selectedCompanyId);
+            const matched = freshSecrets.find(
+              (secret) => secret.name.trim().toLowerCase() === opts.managedName.trim().toLowerCase(),
+            );
+            if (matched) {
+              const rotated = await secretsApi.rotate(matched.id, { value: trimmed });
+              return rotated.id;
+            }
+          }
+          throw err;
+        }
+      };
+
+      const appSecretId = await ensureSecretId(metaAppSecretId, {
+        label: "Meta App Secret",
+        managedName: "meta app secret (managed)",
+        description: "Auto-managed from Meta App Configuration form input.",
+      });
+      const verifyTokenSecretId = await ensureSecretId(metaVerifyTokenSecretId, {
+        label: "Verify Token Secret",
+        managedName: "meta verify token (managed)",
+        description: "Auto-managed from Meta App Configuration form input.",
+      });
+
+      const payload: CompanyExternalPluginConfigUpsertInput = {
+        config: {
+          metaAppId: metaAppId.trim(),
+          appSecret: {
+            type: "secret_ref",
+            secretId: appSecretId,
+            version: "latest",
+          },
+          verifyTokenSecret: {
+            type: "secret_ref",
+            secretId: verifyTokenSecretId,
+            version: "latest",
+          },
+          graphApiVersion: metaGraphApiVersion.trim() || "v22.0",
+        },
+      };
+      setMetaAppSecretId(appSecretId);
+      setMetaVerifyTokenSecretId(verifyTokenSecretId);
+      return externalEventSourcesApi.upsertCompanyPluginConfig(selectedCompanyId, "meta_leadgen", payload);
+    },
+    onSuccess: async () => {
+      metaAppConfigDirtyRef.current = false;
+      setMetaAppConfigDirty(false);
+      setMetaAppConfigError(null);
+      setMetaAppConfigMessage("Meta app configuration saved.");
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.secrets.list(selectedCompanyId ?? ""),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.external.pluginConfig(selectedCompanyId ?? "", "meta_leadgen"),
+      });
+      setTimeout(() => setMetaAppConfigMessage(null), 2500);
+    },
+    onError: (err) => {
+      setMetaAppConfigMessage(null);
+      setMetaAppConfigError(err instanceof Error ? err.message : "Failed to save Meta app configuration.");
+    },
+  });
+
   const archiveMutation = useMutation({
     mutationFn: ({
       companyId,
@@ -177,6 +612,194 @@ export function CompanySettings() {
       brandColor: brandColor || null
     });
   }
+
+  async function handleSaveExternalSource() {
+    if (!selectedCompanyId) return;
+    const trimmedName = sourceName.trim();
+    if (!trimmedName) {
+      setSourceFormError("Source name is required.");
+      return;
+    }
+
+    let parsedRules: CreateExternalEventSource["rulesConfig"];
+    try {
+      parsedRules = externalRulesConfigSchema.parse(JSON.parse(sourceRulesJson));
+    } catch {
+      setSourceFormError("Rules config must be valid JSON.");
+      return;
+    }
+
+    if (!activePlugin) {
+      setSourceFormError("Select a plugin before saving.");
+      return;
+    }
+    if (activePlugin.pluginId === "meta_leadgen" && !editingSourceId) {
+      setSourceFormError("Use Meta quick connect to create the first Meta source.");
+      return;
+    }
+
+    let sourceConfig: Record<string, unknown>;
+    try {
+      sourceConfig = buildSourceConfigPayload(activePlugin, sourceConfigValues);
+    } catch (err) {
+      setSourceFormError(err instanceof Error ? err.message : "Source config is invalid.");
+      return;
+    }
+
+    setSourceSaving(true);
+    setSourceFormError(null);
+    try {
+      const updatePayload: UpdateExternalEventSource = {
+        pluginId: activePlugin.pluginId,
+        name: trimmedName,
+        reviewerAgentId: sourceReviewerAgentId || null,
+        rulesConfig: parsedRules,
+        llmReviewTemplate: sourceTemplate.trim() || null,
+        sourceConfig,
+      };
+      if (editingSourceId) {
+        await externalEventSourcesApi.update(editingSourceId, updatePayload);
+      } else {
+        const createPayload: CreateExternalEventSource = {
+          pluginId: activePlugin.pluginId,
+          name: trimmedName,
+          status: "active",
+          reviewerAgentId: sourceReviewerAgentId || null,
+          rulesConfig: parsedRules,
+          llmReviewTemplate: sourceTemplate.trim() || null,
+          sourceConfig,
+        };
+        await externalEventSourcesApi.create(selectedCompanyId, createPayload);
+      }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.external.sources(selectedCompanyId, sourcePluginId || undefined),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["external", "meta-ops", selectedCompanyId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboard(selectedCompanyId),
+      });
+      resetSourceForm();
+    } catch (err) {
+      setSourceFormError(err instanceof Error ? err.message : "Failed to save source.");
+    } finally {
+      setSourceSaving(false);
+    }
+  }
+
+  function handleSaveMetaAppConfig() {
+    if (!metaAppId.trim()) {
+      setMetaAppConfigError("Meta App ID is required.");
+      setMetaAppConfigMessage(null);
+      return;
+    }
+    if (!metaAppSecretId.trim() || !metaVerifyTokenSecretId.trim()) {
+      setMetaAppConfigError("App Secret and Verify Token secrets are required.");
+      setMetaAppConfigMessage(null);
+      return;
+    }
+    setMetaAppConfigError(null);
+    setMetaAppConfigMessage(null);
+    saveMetaAppConfigMutation.mutate();
+  }
+
+  async function handleLoadMetaPages() {
+    if (!selectedCompanyId) return;
+    const secretId = metaUserAccessTokenSecretId.trim();
+    if (!secretId) {
+      setSourceFormError("Select the user access token secret first.");
+      return;
+    }
+    setSourceFormError(null);
+    setMetaConnectMessage(null);
+    await listMetaPagesMutation.mutateAsync({ userAccessTokenSecretId: secretId });
+  }
+
+  async function handleLoadMetaForms() {
+    if (!selectedCompanyId) return;
+    const secretId = metaUserAccessTokenSecretId.trim();
+    if (!secretId) {
+      setSourceFormError("Select the user access token secret first.");
+      return;
+    }
+    if (!metaPageId) {
+      setSourceFormError("Select a Meta page first.");
+      return;
+    }
+    setSourceFormError(null);
+    setMetaConnectMessage(null);
+    await listMetaFormsMutation.mutateAsync({
+      userAccessTokenSecretId: secretId,
+      pageId: metaPageId,
+    });
+  }
+
+  async function handleAutoConnectMetaSource() {
+    if (!selectedCompanyId) return;
+    if (activePlugin?.pluginId !== "meta_leadgen") {
+      setSourceFormError("Meta auto-connect is only available for the Meta Leadgen plugin.");
+      return;
+    }
+    if (!hasMetaCompanyConfig) {
+      setSourceFormError("Save Meta App Configuration first, then retry connect.");
+      return;
+    }
+
+    const trimmedName = sourceName.trim();
+    if (!trimmedName) {
+      setSourceFormError("Source name is required.");
+      return;
+    }
+
+    const userAccessTokenSecretId = metaUserAccessTokenSecretId.trim();
+    if (!userAccessTokenSecretId) {
+      setSourceFormError("User access token secret is required.");
+      return;
+    }
+    if (!metaPageId) {
+      setSourceFormError("Select a Meta page first.");
+      return;
+    }
+
+    let parsedRules: CreateExternalEventSource["rulesConfig"];
+    try {
+      parsedRules = externalRulesConfigSchema.parse(JSON.parse(sourceRulesJson));
+    } catch {
+      setSourceFormError("Rules config must be valid JSON.");
+      return;
+    }
+
+    setSourceFormError(null);
+    setMetaConnectMessage(null);
+
+    const payload: MetaConnectSourceInput = {
+      sourceId: editingSourceId ?? undefined,
+      sourceName: trimmedName,
+      reviewerAgentId: sourceReviewerAgentId || null,
+      rulesConfig: parsedRules,
+      llmReviewTemplate: sourceTemplate.trim() || null,
+      userAccessTokenSecretId,
+      pageId: metaPageId,
+      formId: metaFormId || null,
+      graphApiVersion: (sourceConfigValues.graphApiVersion ?? "").trim() || "v22.0",
+    };
+
+    await connectMetaSourceMutation.mutateAsync(payload);
+  }
+
+  function handleStartMetaOauth() {
+    if (!selectedCompanyId) return;
+    if (!hasMetaCompanyConfig) {
+      setSourceFormError("Save Meta App Configuration first, then connect with Meta login.");
+      return;
+    }
+    setSourceFormError(null);
+    setMetaConnectMessage(null);
+    startMetaOauthMutation.mutate();
+  }
+
+  const manualMetaCreateBlocked = activePlugin?.pluginId === "meta_leadgen" && !editingSourceId;
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -307,6 +930,457 @@ export function CompanySettings() {
         </div>
       </div>
 
+      {/* External Plugins */}
+      <div className="space-y-4">
+      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          External Sources
+        </div>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <div className="space-y-3 rounded-md border border-border/80 bg-muted/20 px-3 py-3">
+            <p className="text-sm font-medium">Meta App Configuration</p>
+            <p className="text-xs text-muted-foreground">
+              Company-level Meta credentials used for OAuth, webhook verification, and source connection.
+            </p>
+            <Field label="Meta App ID" hint="Meta App ID for this company integration.">
+              <input
+                className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                type="text"
+                value={metaAppId}
+                onChange={(e) => {
+                  metaAppConfigDirtyRef.current = true;
+                  setMetaAppConfigDirty(true);
+                  setMetaAppId(e.target.value);
+                }}
+                placeholder="123456789012345"
+              />
+            </Field>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Field
+                label="App Secret"
+                hint="Select a secret ID, or paste the raw Meta app secret value and it will be stored securely."
+              >
+                <div className="space-y-2">
+                  <select
+                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                    value={metaAppSecretId}
+                    onChange={(e) => {
+                      metaAppConfigDirtyRef.current = true;
+                      setMetaAppConfigDirty(true);
+                      setMetaAppSecretId(e.target.value);
+                    }}
+                  >
+                    <option value="">Select secret</option>
+                    {(companySecrets ?? []).map((secret) => (
+                      <option key={secret.id} value={secret.id}>
+                        {secret.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
+                    type="text"
+                    value={metaAppSecretId}
+                    onChange={(e) => {
+                      metaAppConfigDirtyRef.current = true;
+                      setMetaAppConfigDirty(true);
+                      setMetaAppSecretId(e.target.value);
+                    }}
+                    placeholder="paste secret UUID or raw app secret"
+                  />
+                </div>
+              </Field>
+              <Field
+                label="Verify Token Secret"
+                hint="Select a secret ID, or paste the raw webhook verify token value and it will be stored securely."
+              >
+                <div className="space-y-2">
+                  <select
+                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                    value={metaVerifyTokenSecretId}
+                    onChange={(e) => {
+                      metaAppConfigDirtyRef.current = true;
+                      setMetaAppConfigDirty(true);
+                      setMetaVerifyTokenSecretId(e.target.value);
+                    }}
+                  >
+                    <option value="">Select secret</option>
+                    {(companySecrets ?? []).map((secret) => (
+                      <option key={secret.id} value={secret.id}>
+                        {secret.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
+                    type="text"
+                    value={metaVerifyTokenSecretId}
+                    onChange={(e) => {
+                      metaAppConfigDirtyRef.current = true;
+                      setMetaAppConfigDirty(true);
+                      setMetaVerifyTokenSecretId(e.target.value);
+                    }}
+                    placeholder="paste secret UUID or raw verify token"
+                  />
+                </div>
+              </Field>
+            </div>
+            <Field label="Graph API Version" hint="Optional default version for OAuth and Graph API requests.">
+              <input
+                className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                type="text"
+                value={metaGraphApiVersion}
+                onChange={(e) => {
+                  metaAppConfigDirtyRef.current = true;
+                  setMetaAppConfigDirty(true);
+                  setMetaGraphApiVersion(e.target.value);
+                }}
+                placeholder="v22.0"
+              />
+            </Field>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={handleSaveMetaAppConfig} disabled={saveMetaAppConfigMutation.isPending}>
+                {saveMetaAppConfigMutation.isPending ? "Saving..." : "Save Meta App Config"}
+              </Button>
+              {metaAppConfigMessage && <span className="text-xs text-emerald-600">{metaAppConfigMessage}</span>}
+              {metaAppConfigError && <span className="text-xs text-destructive">{metaAppConfigError}</span>}
+            </div>
+          </div>
+
+          <Field
+            label="Plugin"
+            hint="Choose the ingestion plugin to configure for this source."
+          >
+            <select
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              value={sourcePluginId}
+              onChange={(e) => {
+                const nextPluginId = e.target.value;
+                const plugin = (plugins ?? []).find((item) => item.pluginId === nextPluginId) ?? null;
+                setSourcePluginId(nextPluginId);
+                setSourceConfigValues(plugin ? buildDefaultSourceConfigValues(plugin) : {});
+                setMetaPages([]);
+                setMetaForms([]);
+                setMetaPageId("");
+                setMetaFormId("");
+                setMetaConnectMessage(null);
+              }}
+              disabled={!!editingSourceId}
+            >
+              <option value="">Select plugin</option>
+              {(plugins ?? []).map((plugin) => (
+                <option key={plugin.pluginId} value={plugin.pluginId}>
+                  {plugin.name} ({plugin.pluginId})
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field
+            label="Source name"
+            hint="Human-friendly label for this webhook source."
+          >
+            <input
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              type="text"
+              value={sourceName}
+              onChange={(e) => setSourceName(e.target.value)}
+              placeholder="Meta Ads - Growth Account"
+            />
+          </Field>
+
+          <Field
+            label="Reviewer agent"
+            hint="Agent assigned to review generated action items."
+          >
+            <select
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              value={sourceReviewerAgentId}
+              onChange={(e) => setSourceReviewerAgentId(e.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {(agents ?? []).map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field
+            label="Rules config (JSON)"
+            hint='Deterministic rules (for example: {"mode":"any","rules":[...]}).'
+          >
+            <textarea
+              className="h-44 w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 font-mono text-xs outline-none"
+              value={sourceRulesJson}
+              onChange={(e) => setSourceRulesJson(e.target.value)}
+            />
+          </Field>
+
+          <Field
+            label="LLM review template"
+            hint="Template provided to the reviewer context when a rule matches."
+          >
+            <textarea
+              className="h-24 w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              value={sourceTemplate}
+              onChange={(e) => setSourceTemplate(e.target.value)}
+              placeholder="Review signal {{ruleTitle}} and decide if approval is required."
+            />
+          </Field>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {(activePlugin?.sourceConfigFields ?? []).map((field) => (
+              <PluginConfigFieldInput
+                key={field.key}
+                field={field}
+                value={sourceConfigValues[field.key] ?? ""}
+                companySecrets={companySecrets ?? []}
+                onChange={(next) =>
+                  setSourceConfigValues((prev) => ({
+                    ...prev,
+                    [field.key]: next,
+                  }))
+                }
+              />
+            ))}
+          </div>
+
+          {activePlugin?.pluginId === "meta_leadgen" && (
+            <div className="space-y-3 rounded-md border border-border/80 bg-muted/20 px-3 py-3">
+              <p className="text-sm font-medium">Meta quick connect</p>
+              <p className="text-xs text-muted-foreground">
+                Load pages/forms from Meta, subscribe webhook automatically, and create/update this source in one step.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleStartMetaOauth}
+                  disabled={startMetaOauthMutation.isPending || !hasMetaCompanyConfig}
+                >
+                  {startMetaOauthMutation.isPending ? "Redirecting..." : "Connect with Meta login"}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Uses the saved Meta App Configuration for this company.
+                </span>
+                {!hasMetaCompanyConfig && (
+                  <span className="text-xs text-amber-600">Save Meta App Configuration first.</span>
+                )}
+              </div>
+              <Field
+                label="User Access Token Secret"
+                hint="Secret containing a Meta user access token with page management permissions."
+              >
+                <div className="space-y-2">
+                  <select
+                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                    value={metaUserAccessTokenSecretId}
+                    onChange={(e) => setMetaUserAccessTokenSecretId(e.target.value)}
+                  >
+                    <option value="">Select secret</option>
+                    {(companySecrets ?? []).map((secret) => (
+                      <option key={secret.id} value={secret.id}>
+                        {secret.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
+                    type="text"
+                    value={metaUserAccessTokenSecretId}
+                    onChange={(e) => setMetaUserAccessTokenSecretId(e.target.value)}
+                    placeholder="or paste secret UUID"
+                  />
+                </div>
+              </Field>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleLoadMetaPages}
+                  disabled={listMetaPagesMutation.isPending}
+                >
+                  {listMetaPagesMutation.isPending ? "Loading pages..." : "Load Meta pages"}
+                </Button>
+                {metaPages.length > 0 && (
+                  <span className="text-xs text-muted-foreground">{metaPages.length} page(s) found</span>
+                )}
+              </div>
+
+              <Field label="Meta page" hint="Choose the Facebook Page connected to your lead form.">
+                <select
+                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                  value={metaPageId}
+                  onChange={(e) => {
+                    setMetaPageId(e.target.value);
+                    setMetaForms([]);
+                    setMetaFormId("");
+                  }}
+                >
+                  <option value="">Select page</option>
+                  {metaPages.map((page) => (
+                    <option key={page.id} value={page.id}>
+                      {page.name} ({page.id}){page.hasManageLeads ? "" : " - missing MANAGE_LEADS"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleLoadMetaForms}
+                  disabled={!metaPageId || listMetaFormsMutation.isPending}
+                >
+                  {listMetaFormsMutation.isPending ? "Loading forms..." : "Load lead forms"}
+                </Button>
+                {metaForms.length > 0 && (
+                  <span className="text-xs text-muted-foreground">{metaForms.length} form(s) found</span>
+                )}
+              </div>
+
+              <Field
+                label="Lead form (optional)"
+                hint="Optional form filter for metadata and operations display."
+              >
+                <select
+                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                  value={metaFormId}
+                  onChange={(e) => setMetaFormId(e.target.value)}
+                >
+                  <option value="">All forms</option>
+                  {metaForms.map((form) => (
+                    <option key={form.id} value={form.id}>
+                      {form.name} ({form.status})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleAutoConnectMetaSource}
+                  disabled={connectMetaSourceMutation.isPending}
+                >
+                  {connectMetaSourceMutation.isPending ? "Connecting..." : "Auto-connect Meta source"}
+                </Button>
+                {metaConnectMessage && <span className="text-xs text-emerald-600">{metaConnectMessage}</span>}
+              </div>
+            </div>
+          )}
+
+          {sourceFormError && (
+            <p className="text-xs text-destructive">{sourceFormError}</p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleSaveExternalSource}
+              disabled={sourceSaving || manualMetaCreateBlocked}
+            >
+              {sourceSaving
+                ? "Saving..."
+                : editingSourceId
+                  ? "Update source"
+                  : manualMetaCreateBlocked
+                    ? "Use Auto-connect Meta source"
+                    : "Create source"}
+            </Button>
+            {editingSourceId && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={resetSourceForm}
+              >
+                Cancel edit
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border">
+          <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground">
+            Existing sources
+          </div>
+          {sourcesLoading ? (
+            <div className="px-4 py-3 text-sm text-muted-foreground">Loading sources...</div>
+          ) : (externalSources ?? []).length === 0 ? (
+            <div className="px-4 py-3 text-sm text-muted-foreground">No external sources configured.</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {(externalSources ?? []).map((source) => (
+                <div key={source.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-sm font-medium">{source.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Plugin: {source.pluginId} ·
+                      {" "}
+                      Status: {source.status} · Reviewer:{" "}
+                      {agents?.find((agent) => agent.id === source.reviewerAgentId)?.name ??
+                        (source.reviewerAgentId ? source.reviewerAgentId.slice(0, 8) : "unassigned")}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-mono break-all">
+                      Source ID: {source.id}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-mono break-all">
+                      Webhook URL: {webhookUrlForSource(source)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Last webhook: {formatTime(source.lastWebhookAt)} · Last status: {source.lastWebhookStatus ?? "none"}
+                      {source.lastWebhookError ? ` · Error: ${source.lastWebhookError}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleCopyWebhookUrl(source)}>
+                      {copiedWebhookSourceId === source.id ? "Copied URL" : "Copy URL"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => hydrateSourceForm(source)}>
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const confirmed = window.confirm(`Delete source "${source.name}"?`);
+                        if (!confirmed) return;
+                        deleteSourceMutation.mutate(source.id);
+                      }}
+                      disabled={deleteSourceMutation.isPending}
+                    >
+                      Delete
+                    </Button>
+                    {source.status === "active" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => pauseSourceMutation.mutate(source.id)}
+                        disabled={pauseSourceMutation.isPending}
+                      >
+                        Pause
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => resumeSourceMutation.mutate(source.id)}
+                        disabled={resumeSourceMutation.isPending}
+                      >
+                        Resume
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Invites */}
       <div className="space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -432,6 +1506,177 @@ export function CompanySettings() {
         </div>
       </div>
     </div>
+  );
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function toFormValue(field: ExternalPluginConfigField, value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (field.type === "secret_ref") {
+    const record = asRecord(value);
+    return typeof record?.secretId === "string" ? record.secretId : "";
+  }
+  if (field.type === "boolean") {
+    return value ? "true" : "false";
+  }
+  if (field.type === "json") {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return "";
+    }
+  }
+  return String(value);
+}
+
+function buildDefaultSourceConfigValues(plugin: ExternalPluginMetadata): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const field of plugin.sourceConfigFields) {
+    if (field.defaultValue !== undefined) {
+      values[field.key] = toFormValue(field, field.defaultValue);
+      continue;
+    }
+    values[field.key] = field.type === "boolean" ? "false" : "";
+  }
+  return values;
+}
+
+function buildSourceConfigValuesForEdit(
+  source: ExternalEventSource,
+  plugin: ExternalPluginMetadata | null,
+): Record<string, string> {
+  if (!plugin) return {};
+
+  const values = buildDefaultSourceConfigValues(plugin);
+  const sourceConfig = asRecord(source.sourceConfig) ?? {};
+  const mergedConfig: Record<string, unknown> = { ...sourceConfig };
+
+  for (const field of plugin.sourceConfigFields) {
+    values[field.key] = toFormValue(field, mergedConfig[field.key]);
+  }
+  return values;
+}
+
+function buildSourceConfigPayload(
+  plugin: ExternalPluginMetadata,
+  values: Record<string, string>,
+): Record<string, unknown> {
+  const output: Record<string, unknown> = {};
+
+  for (const field of plugin.sourceConfigFields) {
+    const raw = (values[field.key] ?? "").trim();
+    if (!raw) {
+      if (field.required) throw new Error(`${field.label} is required.`);
+      continue;
+    }
+
+    switch (field.type) {
+      case "secret_ref":
+        output[field.key] = { type: "secret_ref", secretId: raw, version: "latest" };
+        break;
+      case "number": {
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) throw new Error(`${field.label} must be a number.`);
+        output[field.key] = parsed;
+        break;
+      }
+      case "boolean":
+        output[field.key] = raw.toLowerCase() === "true" || raw === "1";
+        break;
+      case "json":
+        try {
+          output[field.key] = JSON.parse(raw);
+        } catch {
+          throw new Error(`${field.label} must be valid JSON.`);
+        }
+        break;
+      case "string":
+      default:
+        output[field.key] = raw;
+        break;
+    }
+  }
+
+  return output;
+}
+
+function PluginConfigFieldInput(props: {
+  field: ExternalPluginConfigField;
+  value: string;
+  companySecrets: CompanySecret[];
+  onChange: (value: string) => void;
+}) {
+  const { field, value, companySecrets, onChange } = props;
+
+  if (field.type === "secret_ref") {
+    return (
+      <Field label={field.label} hint={field.description}>
+        <div className="space-y-2">
+          <select
+            className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          >
+            <option value="">Select secret</option>
+            {companySecrets.map((secret) => (
+              <option key={secret.id} value={secret.id}>
+                {secret.name}
+              </option>
+            ))}
+          </select>
+          <input
+            className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="or paste secret UUID"
+          />
+        </div>
+      </Field>
+    );
+  }
+
+  if (field.type === "boolean") {
+    return (
+      <Field label={field.label} hint={field.description}>
+        <select
+          className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+          value={value || "false"}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          <option value="false">false</option>
+          <option value="true">true</option>
+        </select>
+      </Field>
+    );
+  }
+
+  if (field.type === "json") {
+    return (
+      <Field label={field.label} hint={field.description}>
+        <textarea
+          className="h-24 w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 font-mono text-xs outline-none"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="{}"
+        />
+      </Field>
+    );
+  }
+
+  return (
+    <Field label={field.label} hint={field.description}>
+      <input
+        className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+        type={field.type === "number" ? "number" : "text"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </Field>
   );
 }
 

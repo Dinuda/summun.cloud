@@ -34,6 +34,12 @@ function splitMigrationStatements(content: string): string[] {
     .filter((statement) => statement.length > 0);
 }
 
+function isRecoverableSchemaDriftError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const code = "code" in error ? (error as { code?: unknown }).code : undefined;
+  return code === "42P07" || code === "42710" || code === "42701" || code === "42703";
+}
+
 export type MigrationState =
   | { status: "upToDate"; tableCount: number; availableMigrations: string[]; appliedMigrations: string[] }
   | {
@@ -246,6 +252,7 @@ async function applyPendingMigrationsManually(
 
       await runInTransaction(sql, async () => {
         for (const statement of splitMigrationStatements(migrationContent)) {
+          if (await migrationStatementAlreadyApplied(sql, statement)) continue;
           await sql.unsafe(statement);
         }
 
@@ -362,7 +369,15 @@ async function migrationStatementAlreadyApplied(
   sql: ReturnType<typeof postgres>,
   statement: string,
 ): Promise<boolean> {
-  const normalized = statement.replace(/\s+/g, " ").trim();
+  const normalized = statement
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("--"))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (normalized.length === 0) return true;
 
   const createTableMatch = normalized.match(/^CREATE TABLE(?: IF NOT EXISTS)? "([^"]+)"/i);
   if (createTableMatch) {
@@ -376,14 +391,36 @@ async function migrationStatementAlreadyApplied(
     return columnExists(sql, addColumnMatch[1], addColumnMatch[2]);
   }
 
+  const dropColumnMatch = normalized.match(
+    /^ALTER TABLE "([^"]+)" DROP COLUMN(?: IF EXISTS)? "([^"]+)"/i,
+  );
+  if (dropColumnMatch) {
+    const exists = await columnExists(sql, dropColumnMatch[1], dropColumnMatch[2]);
+    return !exists;
+  }
+
   const createIndexMatch = normalized.match(/^CREATE (?:UNIQUE )?INDEX(?: IF NOT EXISTS)? "([^"]+)"/i);
   if (createIndexMatch) {
     return indexExists(sql, createIndexMatch[1]);
   }
 
+  const dropIndexMatch = normalized.match(/^DROP INDEX(?: IF EXISTS)? "([^"]+)"/i);
+  if (dropIndexMatch) {
+    const exists = await indexExists(sql, dropIndexMatch[1]);
+    return !exists;
+  }
+
   const addConstraintMatch = normalized.match(/^ALTER TABLE "([^"]+)" ADD CONSTRAINT "([^"]+)"/i);
   if (addConstraintMatch) {
     return constraintExists(sql, addConstraintMatch[2]);
+  }
+
+  const dropConstraintMatch = normalized.match(
+    /^ALTER TABLE "([^"]+)" DROP CONSTRAINT(?: IF EXISTS)? "([^"]+)"/i,
+  );
+  if (dropConstraintMatch) {
+    const exists = await constraintExists(sql, dropConstraintMatch[2]);
+    return !exists;
   }
 
   // If we cannot reason about a statement safely, require manual migration.
@@ -643,19 +680,31 @@ export async function inspectMigrations(url: string): Promise<MigrationState> {
 }
 
 export async function applyPendingMigrations(url: string): Promise<void> {
-  const initialState = await inspectMigrations(url);
-  if (initialState.status === "upToDate") return;
+  let state = await inspectMigrations(url);
+  if (state.status === "upToDate") return;
+
+  if (state.reason === "pending-migrations") {
+    const repair = await reconcilePendingMigrationHistory(url);
+    if (repair.repairedMigrations.length > 0) {
+      state = await inspectMigrations(url);
+      if (state.status === "upToDate") return;
+    }
+  }
 
   const sql = createUtilitySql(url);
 
   try {
     const db = drizzlePg(sql);
-    await migratePg(db, { migrationsFolder: MIGRATIONS_FOLDER });
+    try {
+      await migratePg(db, { migrationsFolder: MIGRATIONS_FOLDER });
+    } catch (error) {
+      if (!isRecoverableSchemaDriftError(error)) throw error;
+    }
   } finally {
     await sql.end();
   }
 
-  let state = await inspectMigrations(url);
+  state = await inspectMigrations(url);
   if (state.status === "upToDate") return;
 
   const repair = await reconcilePendingMigrationHistory(url);

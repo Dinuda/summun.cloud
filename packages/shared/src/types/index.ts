@@ -32,6 +32,30 @@ export type {
 export type { Goal } from "./goal.js";
 export type { Approval, ApprovalComment } from "./approval.js";
 export type {
+  ExternalSecretRef,
+  ExternalRule,
+  ExternalRulesConfig,
+  ExternalVerificationConfig,
+  ExternalPluginConfigField,
+  ExternalPluginConfigFieldType,
+  ExternalPluginMetadata,
+  CompanyExternalPluginConfig,
+  MetaLeadgenCompanyPluginConfig,
+  ExternalEventSource,
+  ExternalEvent,
+  ExternalWorkflowRun,
+  ExternalActionItem,
+  ExternalLeadRecord,
+  ExternalMetaPageSummary,
+  ExternalMetaLeadFormSummary,
+  ExternalMetaConnectResult,
+  ExternalMetaOauthStartResult,
+  ExternalOpsSummary,
+  ExternalOpsRecentEvent,
+  ExternalOpsRecentActionItem,
+  ExternalOpsSnapshot,
+} from "./external.js";
+export type {
   SecretProvider,
   SecretVersionSelector,
   EnvPlainBinding,

@@ -29,10 +29,18 @@ const mockSecretService = vi.hoisted(() => ({
   normalizeHireApprovalPayloadForPersistence: vi.fn(),
 }));
 
+const mockExternalIntegrationService = vi.hoisted(() => ({
+  markActionItemApprovalRequested: vi.fn(),
+  syncActionItemFromApprovalResolution: vi.fn(),
+  syncActionItemFromRevisionRequest: vi.fn(),
+  syncActionItemFromResubmission: vi.fn(),
+}));
+
 const mockLogActivity = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/index.js", () => ({
   approvalService: () => mockApprovalService,
+  externalIntegrationService: () => mockExternalIntegrationService,
   heartbeatService: () => mockHeartbeatService,
   issueApprovalService: () => mockIssueApprovalService,
   logActivity: mockLogActivity,

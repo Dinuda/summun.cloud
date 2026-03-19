@@ -337,6 +337,7 @@ function invalidateHeartbeatQueries(
   queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(companyId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(companyId) });
+  queryClient.invalidateQueries({ queryKey: ["external", "meta-ops", companyId] });
   queryClient.invalidateQueries({ queryKey: queryKeys.costs(companyId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
 
@@ -354,6 +355,7 @@ function invalidateActivityQueries(
 ) {
   queryClient.invalidateQueries({ queryKey: queryKeys.activity(companyId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(companyId) });
+  queryClient.invalidateQueries({ queryKey: ["external", "meta-ops", companyId] });
   queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
 
   const entityType = readString(payload.entityType);

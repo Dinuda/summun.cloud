@@ -40,6 +40,18 @@ describe("privateHostnameGuard", () => {
     expect(res.status).toBe(200);
   });
 
+  it("allows wildcard suffix hostnames configured with leading dot", async () => {
+    const app = createApp({ enabled: true, allowedHostnames: [".ngrok-free.app"] });
+    const res = await request(app).get("/api/health").set("Host", "44a1-112-134-216-201.ngrok-free.app:3100");
+    expect(res.status).toBe(200);
+  });
+
+  it("allows wildcard suffix hostnames configured with star-dot prefix", async () => {
+    const app = createApp({ enabled: true, allowedHostnames: ["*.ngrok-free.app"] });
+    const res = await request(app).get("/api/health").set("Host", "44a1-112-134-216-201.ngrok-free.app:3100");
+    expect(res.status).toBe(200);
+  });
+
   it("blocks unknown hostnames with remediation command", async () => {
     const app = createApp({ enabled: true, allowedHostnames: ["some-other-host"] });
     const res = await request(app).get("/api/health").set("Host", "dotta-macbook-pro:3100");

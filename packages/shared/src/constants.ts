@@ -149,7 +149,7 @@ export const PROJECT_COLORS = [
   "#3b82f6", // blue
 ] as const;
 
-export const APPROVAL_TYPES = ["hire_agent", "approve_ceo_strategy"] as const;
+export const APPROVAL_TYPES = ["hire_agent", "approve_ceo_strategy", "approve_action_item"] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
 
 export const APPROVAL_STATUSES = [
@@ -160,6 +160,45 @@ export const APPROVAL_STATUSES = [
   "cancelled",
 ] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
+export const EXTERNAL_SOURCE_PROVIDERS = ["meta_ads"] as const;
+export type ExternalSourceProvider = (typeof EXTERNAL_SOURCE_PROVIDERS)[number];
+
+export const EXTERNAL_PLUGIN_IDS = ["meta_leadgen"] as const;
+export type ExternalPluginId = (typeof EXTERNAL_PLUGIN_IDS)[number];
+
+export const EXTERNAL_SOURCE_STATUSES = ["active", "paused"] as const;
+export type ExternalSourceStatus = (typeof EXTERNAL_SOURCE_STATUSES)[number];
+
+export const EXTERNAL_EVENT_STATUSES = [
+  "received",
+  "processed",
+  "rejected",
+  "duplicate",
+  "failed",
+] as const;
+export type ExternalEventStatus = (typeof EXTERNAL_EVENT_STATUSES)[number];
+
+export const EXTERNAL_WORKFLOW_ENGINES = ["inline", "temporal"] as const;
+export type ExternalWorkflowEngine = (typeof EXTERNAL_WORKFLOW_ENGINES)[number];
+
+export const EXTERNAL_WORKFLOW_RUN_STATUSES = [
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "skipped",
+] as const;
+export type ExternalWorkflowRunStatus = (typeof EXTERNAL_WORKFLOW_RUN_STATUSES)[number];
+
+export const EXTERNAL_ACTION_ITEM_STATUSES = [
+  "pending_review",
+  "pending_approval",
+  "approved",
+  "rejected",
+  "cancelled",
+] as const;
+export type ExternalActionItemStatus = (typeof EXTERNAL_ACTION_ITEM_STATUSES)[number];
 
 export const SECRET_PROVIDERS = [
   "local_encrypted",

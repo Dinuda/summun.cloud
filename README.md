@@ -4,15 +4,14 @@
 
 <p align="center">
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
-  <a href="https://summun.cloud/docs"><strong>Docs</strong></a> &middot;
   <a href="https://github.com/Dinuda/summun.cloud"><strong>GitHub</strong></a> &middot;
-  <a href="https://discord.gg/m4HZY7xNG3"><strong>Discord</strong></a>
+  <a href="https://discord.gg/yXnPtae6"><strong>Discord</strong></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/Dinuda/summun.cloud/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
   <a href="https://github.com/Dinuda/summun.cloud/stargazers"><img src="https://img.shields.io/github/stars/Dinuda/summun.cloud?style=flat" alt="Stars" /></a>
-  <a href="https://discord.gg/m4HZY7xNG3"><img src="https://img.shields.io/discord/000000000?label=discord" alt="Discord" /></a>
+  <a href="https://discord.gg/yXnPtae6"><img src="https://img.shields.io/discord/000000000?label=discord" alt="Discord" /></a>
 </p>
 
 <br/>
@@ -254,7 +253,7 @@ We welcome contributions. See the [contributing guide](CONTRIBUTING.md) for deta
 
 ## Community
 
-- [Discord](https://discord.gg/m4HZY7xNG3) — Join the community
+- [Discord](https://discord.gg/yXnPtae6) — Join the community
 - [GitHub Issues](https://github.com/Dinuda/summun.cloud/issues) — bugs and feature requests
 - [GitHub Discussions](https://github.com/Dinuda/summun.cloud/discussions) — ideas and RFC
 

@@ -24,6 +24,8 @@ import { sidebarBadgeRoutes } from "./routes/sidebar-badges.js";
 import { llmRoutes } from "./routes/llms.js";
 import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
+import { externalEventSourceRoutes } from "./routes/external-event-sources.js";
+import { webhooksExternalRoutes } from "./routes/webhooks-external.js";
 import { applyUiBranding } from "./ui-branding.js";
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
@@ -47,7 +49,13 @@ export async function createApp(
 ) {
   const app = express();
 
-  app.use(express.json());
+  app.use(
+    express.json({
+      verify: (req, _res, buf) => {
+        (req as ExpressRequest).rawBody = Buffer.from(buf);
+      },
+    }),
+  );
   app.use(httpLogger);
   const privateHostnameGateEnabled =
     opts.deploymentMode === "authenticated" && opts.deploymentExposure === "private";
@@ -114,6 +122,8 @@ export async function createApp(
   api.use(activityRoutes(db));
   api.use(dashboardRoutes(db));
   api.use(sidebarBadgeRoutes(db));
+  api.use(externalEventSourceRoutes(db));
+  api.use(webhooksExternalRoutes(db));
   api.use(
     accessRoutes(db, {
       deploymentMode: opts.deploymentMode,
@@ -160,7 +170,9 @@ export async function createApp(
           port: hmrPort,
           clientPort: hmrPort,
         },
-        allowedHosts: privateHostnameGateEnabled ? Array.from(privateHostnameAllowSet) : undefined,
+        // Keep host restrictions at the Express layer (privateHostnameGuard) and
+        // disable Vite's strict host check so rotating ngrok hosts don't break dev.
+        allowedHosts: true,
       },
     });
 

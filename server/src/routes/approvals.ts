@@ -11,6 +11,7 @@ import { validate } from "../middleware/validate.js";
 import { logger } from "../middleware/logger.js";
 import {
   approvalService,
+  externalIntegrationService,
   heartbeatService,
   issueApprovalService,
   logActivity,
@@ -32,6 +33,7 @@ export function approvalRoutes(db: Db) {
   const heartbeat = heartbeatService(db);
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
+  const externalSvc = externalIntegrationService(db);
   const strictSecretsMode = process.env.SUMMUN_SECRETS_STRICT_MODE === "true";
 
   router.get("/companies/:companyId/approvals", async (req, res) => {
@@ -84,6 +86,7 @@ export function approvalRoutes(db: Db) {
       decidedAt: null,
       updatedAt: new Date(),
     });
+    await externalSvc.markActionItemApprovalRequested(approval);
 
     if (uniqueIssueIds.length > 0) {
       await issueApprovalsSvc.linkManyForApproval(approval.id, uniqueIssueIds, {
@@ -128,6 +131,7 @@ export function approvalRoutes(db: Db) {
     );
 
     if (applied) {
+      await externalSvc.syncActionItemFromApprovalResolution(approval);
       const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
       const linkedIssueIds = linkedIssues.map((issue) => issue.id);
       const primaryIssueId = linkedIssueIds[0] ?? null;
@@ -223,6 +227,7 @@ export function approvalRoutes(db: Db) {
     );
 
     if (applied) {
+      await externalSvc.syncActionItemFromApprovalResolution(approval);
       await logActivity(db, {
         companyId: approval.companyId,
         actorType: "user",
@@ -248,6 +253,7 @@ export function approvalRoutes(db: Db) {
         req.body.decidedByUserId ?? "board",
         req.body.decisionNote,
       );
+      await externalSvc.syncActionItemFromRevisionRequest(approval);
 
       await logActivity(db, {
         companyId: approval.companyId,
@@ -287,6 +293,7 @@ export function approvalRoutes(db: Db) {
         : req.body.payload
       : undefined;
     const approval = await svc.resubmit(id, normalizedPayload);
+    await externalSvc.syncActionItemFromResubmission(approval);
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId: approval.companyId,

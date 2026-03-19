@@ -28,6 +28,16 @@ function normalizeAllowedHostnames(values: string[]): string[] {
   return Array.from(unique);
 }
 
+function hostnameMatchesRule(hostname: string, rule: string): boolean {
+  if (!rule) return false;
+  if (hostname === rule) return true;
+
+  const wildcardRule = rule.startsWith("*.") ? rule.slice(2) : rule.startsWith(".") ? rule.slice(1) : null;
+  if (!wildcardRule) return false;
+  if (hostname === wildcardRule) return true;
+  return hostname.endsWith(`.${wildcardRule}`);
+}
+
 export function resolvePrivateHostnameAllowSet(opts: { allowedHostnames: string[]; bindHost: string }): Set<string> {
   const configuredAllow = normalizeAllowedHostnames(opts.allowedHostnames);
   const bindHost = opts.bindHost.trim().toLowerCase();
@@ -62,6 +72,7 @@ export function privateHostnameGuard(opts: {
     allowedHostnames: opts.allowedHostnames,
     bindHost: opts.bindHost,
   });
+  const allowRules = Array.from(allowSet);
 
   return (req, res, next) => {
     const hostname = extractHostname(req);
@@ -77,7 +88,10 @@ export function privateHostnameGuard(opts: {
       return;
     }
 
-    if (isLoopbackHostname(hostname) || allowSet.has(hostname)) {
+    const allowed =
+      isLoopbackHostname(hostname) ||
+      allowRules.some((rule) => hostnameMatchesRule(hostname, rule));
+    if (allowed) {
       next();
       return;
     }

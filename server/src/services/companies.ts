@@ -14,6 +14,11 @@ import {
   heartbeatRuns,
   heartbeatRunEvents,
   costEvents,
+  externalActionItems,
+  externalLeads,
+  externalWorkflowRuns,
+  externalEvents,
+  externalEventSources,
   approvalComments,
   approvals,
   activityLog,
@@ -108,6 +113,11 @@ export function companyService(db: Db) {
         await tx.delete(agentRuntimeState).where(eq(agentRuntimeState.companyId, id));
         await tx.delete(issueComments).where(eq(issueComments.companyId, id));
         await tx.delete(costEvents).where(eq(costEvents.companyId, id));
+        await tx.delete(externalActionItems).where(eq(externalActionItems.companyId, id));
+        await tx.delete(externalLeads).where(eq(externalLeads.companyId, id));
+        await tx.delete(externalWorkflowRuns).where(eq(externalWorkflowRuns.companyId, id));
+        await tx.delete(externalEvents).where(eq(externalEvents.companyId, id));
+        await tx.delete(externalEventSources).where(eq(externalEventSources.companyId, id));
         await tx.delete(approvalComments).where(eq(approvalComments.companyId, id));
         await tx.delete(approvals).where(eq(approvals.companyId, id));
         await tx.delete(companySecrets).where(eq(companySecrets.companyId, id));
