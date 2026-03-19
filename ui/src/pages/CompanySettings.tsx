@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -7,14 +7,12 @@ import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { externalEventSourcesApi } from "../api/externalEventSources";
 import { secretsApi } from "../api/secrets";
-import { ApiError } from "../api/client";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Settings, Check } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   externalRulesConfigSchema,
-  type CompanyExternalPluginConfigUpsertInput,
   type CompanySecret,
   type CreateExternalEventSource,
   type ExternalEventSource,
@@ -36,12 +34,6 @@ type AgentSnippetInput = {
   connectionCandidates?: string[] | null;
   testResolutionUrl?: string | null;
 };
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function isUuid(value: string) {
-  return UUID_RE.test(value);
-}
 
 export function CompanySettings() {
   const {
@@ -88,14 +80,6 @@ export function CompanySettings() {
   const [metaPages, setMetaPages] = useState<ExternalMetaPageSummary[]>([]);
   const [metaForms, setMetaForms] = useState<ExternalMetaLeadFormSummary[]>([]);
   const [metaConnectMessage, setMetaConnectMessage] = useState<string | null>(null);
-  const [metaAppId, setMetaAppId] = useState("");
-  const [metaAppSecretId, setMetaAppSecretId] = useState("");
-  const [metaVerifyTokenSecretId, setMetaVerifyTokenSecretId] = useState("");
-  const [metaGraphApiVersion, setMetaGraphApiVersion] = useState("v22.0");
-  const [metaAppConfigMessage, setMetaAppConfigMessage] = useState<string | null>(null);
-  const [metaAppConfigError, setMetaAppConfigError] = useState<string | null>(null);
-  const [metaAppConfigDirty, setMetaAppConfigDirty] = useState(false);
-  const metaAppConfigDirtyRef = useRef(false);
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId ?? ""),
@@ -122,28 +106,10 @@ export function CompanySettings() {
     enabled: !!selectedCompanyId,
   });
 
-  const { data: metaPluginConfig } = useQuery({
-    queryKey: queryKeys.external.pluginConfig(selectedCompanyId ?? "", "meta_leadgen"),
-    queryFn: async () => {
-      try {
-        return await externalEventSourcesApi.getCompanyPluginConfig(selectedCompanyId!, "meta_leadgen");
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 404) return null;
-        throw err;
-      }
-    },
-    enabled: !!selectedCompanyId,
-  });
-
   const activePlugin = useMemo(
     () => (plugins ?? []).find((plugin) => plugin.pluginId === sourcePluginId) ?? null,
     [plugins, sourcePluginId],
   );
-
-  const hasMetaCompanyConfig =
-    metaAppId.trim().length > 0 &&
-    metaAppSecretId.trim().length > 0 &&
-    metaVerifyTokenSecretId.trim().length > 0;
 
   useEffect(() => {
     if (!plugins || plugins.length === 0) return;
@@ -238,10 +204,6 @@ export function CompanySettings() {
     setInviteSnippet(null);
     setSnippetCopied(false);
     setSnippetCopyDelightId(0);
-    setMetaAppConfigMessage(null);
-    setMetaAppConfigError(null);
-    metaAppConfigDirtyRef.current = false;
-    setMetaAppConfigDirty(false);
     resetSourceForm();
   }, [selectedCompanyId]);
 
@@ -276,28 +238,6 @@ export function CompanySettings() {
     for (const key of keysToDelete) url.searchParams.delete(key);
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }, [selectedCompanyId, setSelectedCompanyId]);
-
-  useEffect(() => {
-    if (metaAppConfigDirtyRef.current || metaAppConfigDirty) return;
-    if (!metaPluginConfig) {
-      setMetaAppId("");
-      setMetaAppSecretId("");
-      setMetaVerifyTokenSecretId("");
-      setMetaGraphApiVersion("v22.0");
-      return;
-    }
-    const config = asRecord(metaPluginConfig.config) ?? {};
-    const appSecret = asRecord(config.appSecret);
-    const verifyTokenSecret = asRecord(config.verifyTokenSecret);
-    setMetaAppId(typeof config.metaAppId === "string" ? config.metaAppId : "");
-    setMetaAppSecretId(typeof appSecret?.secretId === "string" ? appSecret.secretId : "");
-    setMetaVerifyTokenSecretId(typeof verifyTokenSecret?.secretId === "string" ? verifyTokenSecret.secretId : "");
-    setMetaGraphApiVersion(
-      typeof config.graphApiVersion === "string" && config.graphApiVersion.length > 0
-        ? config.graphApiVersion
-        : "v22.0",
-    );
-  }, [metaPluginConfig, metaAppConfigDirty]);
 
   function resetSourceForm() {
     const plugin = plugins?.find((item) => item.pluginId === sourcePluginId) ?? plugins?.[0] ?? null;
@@ -471,104 +411,6 @@ export function CompanySettings() {
     },
   });
 
-  const saveMetaAppConfigMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedCompanyId) {
-        throw new Error("Select a company before saving Meta configuration.");
-      }
-      const ensureSecretId = async (
-        rawInput: string,
-        opts: { label: string; managedName: string; description: string },
-      ) => {
-        const trimmed = rawInput.trim();
-        if (!trimmed) {
-          throw new Error(`${opts.label} is required.`);
-        }
-        if (isUuid(trimmed)) {
-          return trimmed;
-        }
-
-        const existingManaged =
-          (companySecrets ?? []).find(
-            (secret) => secret.name.trim().toLowerCase() === opts.managedName.trim().toLowerCase(),
-          ) ?? null;
-        if (existingManaged) {
-          const rotated = await secretsApi.rotate(existingManaged.id, { value: trimmed });
-          return rotated.id;
-        }
-
-        try {
-          const created = await secretsApi.create(selectedCompanyId, {
-            name: opts.managedName,
-            value: trimmed,
-            description: opts.description,
-          });
-          return created.id;
-        } catch (err) {
-          if (err instanceof ApiError && err.status === 409) {
-            const freshSecrets = await secretsApi.list(selectedCompanyId);
-            const matched = freshSecrets.find(
-              (secret) => secret.name.trim().toLowerCase() === opts.managedName.trim().toLowerCase(),
-            );
-            if (matched) {
-              const rotated = await secretsApi.rotate(matched.id, { value: trimmed });
-              return rotated.id;
-            }
-          }
-          throw err;
-        }
-      };
-
-      const appSecretId = await ensureSecretId(metaAppSecretId, {
-        label: "Meta App Secret",
-        managedName: "meta app secret (managed)",
-        description: "Auto-managed from Meta App Configuration form input.",
-      });
-      const verifyTokenSecretId = await ensureSecretId(metaVerifyTokenSecretId, {
-        label: "Verify Token Secret",
-        managedName: "meta verify token (managed)",
-        description: "Auto-managed from Meta App Configuration form input.",
-      });
-
-      const payload: CompanyExternalPluginConfigUpsertInput = {
-        config: {
-          metaAppId: metaAppId.trim(),
-          appSecret: {
-            type: "secret_ref",
-            secretId: appSecretId,
-            version: "latest",
-          },
-          verifyTokenSecret: {
-            type: "secret_ref",
-            secretId: verifyTokenSecretId,
-            version: "latest",
-          },
-          graphApiVersion: metaGraphApiVersion.trim() || "v22.0",
-        },
-      };
-      setMetaAppSecretId(appSecretId);
-      setMetaVerifyTokenSecretId(verifyTokenSecretId);
-      return externalEventSourcesApi.upsertCompanyPluginConfig(selectedCompanyId, "meta_leadgen", payload);
-    },
-    onSuccess: async () => {
-      metaAppConfigDirtyRef.current = false;
-      setMetaAppConfigDirty(false);
-      setMetaAppConfigError(null);
-      setMetaAppConfigMessage("Meta app configuration saved.");
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.secrets.list(selectedCompanyId ?? ""),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.external.pluginConfig(selectedCompanyId ?? "", "meta_leadgen"),
-      });
-      setTimeout(() => setMetaAppConfigMessage(null), 2500);
-    },
-    onError: (err) => {
-      setMetaAppConfigMessage(null);
-      setMetaAppConfigError(err instanceof Error ? err.message : "Failed to save Meta app configuration.");
-    },
-  });
-
   const archiveMutation = useMutation({
     mutationFn: ({
       companyId,
@@ -688,22 +530,6 @@ export function CompanySettings() {
     }
   }
 
-  function handleSaveMetaAppConfig() {
-    if (!metaAppId.trim()) {
-      setMetaAppConfigError("Meta App ID is required.");
-      setMetaAppConfigMessage(null);
-      return;
-    }
-    if (!metaAppSecretId.trim() || !metaVerifyTokenSecretId.trim()) {
-      setMetaAppConfigError("App Secret and Verify Token secrets are required.");
-      setMetaAppConfigMessage(null);
-      return;
-    }
-    setMetaAppConfigError(null);
-    setMetaAppConfigMessage(null);
-    saveMetaAppConfigMutation.mutate();
-  }
-
   async function handleLoadMetaPages() {
     if (!selectedCompanyId) return;
     const secretId = metaUserAccessTokenSecretId.trim();
@@ -739,10 +565,6 @@ export function CompanySettings() {
     if (!selectedCompanyId) return;
     if (activePlugin?.pluginId !== "meta_leadgen") {
       setSourceFormError("Meta auto-connect is only available for the Meta Leadgen plugin.");
-      return;
-    }
-    if (!hasMetaCompanyConfig) {
-      setSourceFormError("Save Meta App Configuration first, then retry connect.");
       return;
     }
 
@@ -790,10 +612,6 @@ export function CompanySettings() {
 
   function handleStartMetaOauth() {
     if (!selectedCompanyId) return;
-    if (!hasMetaCompanyConfig) {
-      setSourceFormError("Save Meta App Configuration first, then connect with Meta login.");
-      return;
-    }
     setSourceFormError(null);
     setMetaConnectMessage(null);
     startMetaOauthMutation.mutate();
@@ -936,114 +754,18 @@ export function CompanySettings() {
           External Sources
         </div>
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
-          <div className="space-y-3 rounded-md border border-border/80 bg-muted/20 px-3 py-3">
-            <p className="text-sm font-medium">Meta App Configuration</p>
+          <div className="space-y-2 rounded-md border border-border/80 bg-muted/20 px-3 py-3">
+            <p className="text-sm font-medium">Managed Meta App</p>
             <p className="text-xs text-muted-foreground">
-              Company-level Meta credentials used for OAuth, webhook verification, and source connection.
+              This setup uses instance-managed Meta credentials. Connect with Meta login below, then select page/form.
             </p>
-            <Field label="Meta App ID" hint="Meta App ID for this company integration.">
-              <input
-                className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                type="text"
-                value={metaAppId}
-                onChange={(e) => {
-                  metaAppConfigDirtyRef.current = true;
-                  setMetaAppConfigDirty(true);
-                  setMetaAppId(e.target.value);
-                }}
-                placeholder="123456789012345"
-              />
-            </Field>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field
-                label="App Secret"
-                hint="Select a secret ID, or paste the raw Meta app secret value and it will be stored securely."
-              >
-                <div className="space-y-2">
-                  <select
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    value={metaAppSecretId}
-                    onChange={(e) => {
-                      metaAppConfigDirtyRef.current = true;
-                      setMetaAppConfigDirty(true);
-                      setMetaAppSecretId(e.target.value);
-                    }}
-                  >
-                    <option value="">Select secret</option>
-                    {(companySecrets ?? []).map((secret) => (
-                      <option key={secret.id} value={secret.id}>
-                        {secret.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
-                    type="text"
-                    value={metaAppSecretId}
-                    onChange={(e) => {
-                      metaAppConfigDirtyRef.current = true;
-                      setMetaAppConfigDirty(true);
-                      setMetaAppSecretId(e.target.value);
-                    }}
-                    placeholder="paste secret UUID or raw app secret"
-                  />
-                </div>
-              </Field>
-              <Field
-                label="Verify Token Secret"
-                hint="Select a secret ID, or paste the raw webhook verify token value and it will be stored securely."
-              >
-                <div className="space-y-2">
-                  <select
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    value={metaVerifyTokenSecretId}
-                    onChange={(e) => {
-                      metaAppConfigDirtyRef.current = true;
-                      setMetaAppConfigDirty(true);
-                      setMetaVerifyTokenSecretId(e.target.value);
-                    }}
-                  >
-                    <option value="">Select secret</option>
-                    {(companySecrets ?? []).map((secret) => (
-                      <option key={secret.id} value={secret.id}>
-                        {secret.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
-                    type="text"
-                    value={metaVerifyTokenSecretId}
-                    onChange={(e) => {
-                      metaAppConfigDirtyRef.current = true;
-                      setMetaAppConfigDirty(true);
-                      setMetaVerifyTokenSecretId(e.target.value);
-                    }}
-                    placeholder="paste secret UUID or raw verify token"
-                  />
-                </div>
-              </Field>
-            </div>
-            <Field label="Graph API Version" hint="Optional default version for OAuth and Graph API requests.">
-              <input
-                className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                type="text"
-                value={metaGraphApiVersion}
-                onChange={(e) => {
-                  metaAppConfigDirtyRef.current = true;
-                  setMetaAppConfigDirty(true);
-                  setMetaGraphApiVersion(e.target.value);
-                }}
-                placeholder="v22.0"
-              />
-            </Field>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" onClick={handleSaveMetaAppConfig} disabled={saveMetaAppConfigMutation.isPending}>
-                {saveMetaAppConfigMutation.isPending ? "Saving..." : "Save Meta App Config"}
-              </Button>
-              {metaAppConfigMessage && <span className="text-xs text-emerald-600">{metaAppConfigMessage}</span>}
-              {metaAppConfigError && <span className="text-xs text-destructive">{metaAppConfigError}</span>}
-            </div>
+            <p className="text-xs text-muted-foreground">
+              If connect fails immediately, configure <code>SUMMUN_META_MANAGED_APP_ID</code>,
+              {" "}
+              <code>SUMMUN_META_MANAGED_APP_SECRET</code>, and
+              {" "}
+              <code>SUMMUN_META_MANAGED_VERIFY_TOKEN</code> on the server.
+            </p>
           </div>
 
           <Field
@@ -1157,16 +879,13 @@ export function CompanySettings() {
                   size="sm"
                   variant="outline"
                   onClick={handleStartMetaOauth}
-                  disabled={startMetaOauthMutation.isPending || !hasMetaCompanyConfig}
+                  disabled={startMetaOauthMutation.isPending}
                 >
                   {startMetaOauthMutation.isPending ? "Redirecting..." : "Connect with Meta login"}
                 </Button>
                 <span className="text-xs text-muted-foreground">
-                  Uses the saved Meta App Configuration for this company.
+                  Uses instance-managed Meta credentials configured on the server.
                 </span>
-                {!hasMetaCompanyConfig && (
-                  <span className="text-xs text-amber-600">Save Meta App Configuration first.</span>
-                )}
               </div>
               <Field
                 label="User Access Token Secret"

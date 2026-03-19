@@ -189,6 +189,23 @@ Expected:
 - `/api/health` returns `{"status":"ok"}`
 - `/api/companies` returns a JSON array
 
+## Managed Meta Leadgen Setup
+
+For Zapier-style Meta onboarding (connect login, then select page/form), configure instance-level managed credentials:
+
+```sh
+SUMMUN_META_MANAGED_APP_ID=...
+SUMMUN_META_MANAGED_APP_SECRET=...
+SUMMUN_META_MANAGED_VERIFY_TOKEN=...
+```
+
+With these set, Company Settings uses one-click Meta connect and auto-manages per-company secret refs internally.
+
+Legacy fallback:
+
+- If all three managed variables are unset, existing company-level Meta plugin config is still supported.
+- If only some managed variables are set, Meta connect fails fast with a configuration error until all three are set (or all unset).
+
 ## Reset Local Dev Database
 
 To wipe local dev data and start fresh:

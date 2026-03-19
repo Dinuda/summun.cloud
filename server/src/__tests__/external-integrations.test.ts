@@ -3,6 +3,7 @@ import {
   deriveEventIdempotencyKey,
   evaluateRulesConfig,
   extractNumericMetric,
+  resolveManagedMetaRuntimeEnv,
 } from "../services/external-integrations.js";
 
 describe("external integration helpers", () => {
@@ -58,5 +59,32 @@ describe("external integration helpers", () => {
     });
     expect(bodyKey.startsWith("body:")).toBe(true);
     expect(bodyKey.length).toBeGreaterThan(20);
+  });
+
+  it("parses managed Meta runtime env when all required variables are present", () => {
+    const resolved = resolveManagedMetaRuntimeEnv({
+      SUMMUN_META_MANAGED_APP_ID: "1234567890",
+      SUMMUN_META_MANAGED_APP_SECRET: "app-secret",
+      SUMMUN_META_MANAGED_VERIFY_TOKEN: "verify-token",
+    });
+    expect(resolved).toEqual({
+      metaAppId: "1234567890",
+      appSecret: "app-secret",
+      verifyToken: "verify-token",
+    });
+  });
+
+  it("returns null when managed Meta runtime env is fully unset", () => {
+    const resolved = resolveManagedMetaRuntimeEnv({});
+    expect(resolved).toBeNull();
+  });
+
+  it("fails when managed Meta runtime env is partially configured", () => {
+    expect(() =>
+      resolveManagedMetaRuntimeEnv({
+        SUMMUN_META_MANAGED_APP_ID: "1234567890",
+        SUMMUN_META_MANAGED_APP_SECRET: "app-secret",
+      }),
+    ).toThrow("Managed Meta credentials are partially configured.");
   });
 });

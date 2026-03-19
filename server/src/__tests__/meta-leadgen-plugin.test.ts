@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { metaLeadgenPlugin } from "../external-plugins/meta-leadgen.js";
 
@@ -93,5 +94,71 @@ describe("meta leadgen plugin extraction", () => {
     ).rejects.toThrow(
       "Meta Graph API error (400): Unsupported get request (code 100, subcode 33) [leadgen_id=lead-1]",
     );
+  });
+
+  it("accepts webhook challenge with configured verify token secret ref", async () => {
+    const result = await metaLeadgenPlugin.verifyChallenge!(
+      {
+        id: "source-1",
+        companyId: "company-1",
+        pluginId: "meta_leadgen",
+        sourceConfig: {
+          verifyTokenSecret: {
+            type: "secret_ref",
+            secretId: "00000000-0000-0000-0000-000000000001",
+            version: "latest",
+          },
+        },
+      },
+      {
+        mode: "subscribe",
+        token: "verify-token",
+        challenge: "challenge-123",
+      },
+      {
+        resolveSecretRef: async () => "verify-token",
+        fetchJson: async () => ({ status: 200, body: {} }),
+      },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      challenge: "challenge-123",
+    });
+  });
+
+  it("accepts webhook delivery with valid app secret signature", async () => {
+    const payload = { object: "page", entry: [] as unknown[] };
+    const rawBody = Buffer.from(JSON.stringify(payload));
+    const secret = "app-secret";
+    const signature = createHmac("sha256", secret).update(rawBody).digest("hex");
+
+    const result = await metaLeadgenPlugin.verifyDelivery(
+      {
+        id: "source-1",
+        companyId: "company-1",
+        pluginId: "meta_leadgen",
+        sourceConfig: {
+          appSecret: {
+            type: "secret_ref",
+            secretId: "00000000-0000-0000-0000-000000000002",
+            version: "latest",
+          },
+        },
+      },
+      {
+        headers: {
+          "x-hub-signature-256": `sha256=${signature}`,
+        },
+        rawBody,
+        payload,
+      },
+      {
+        resolveSecretRef: async () => secret,
+        fetchJson: async () => ({ status: 200, body: {} }),
+      },
+    );
+
+    expect(result).toEqual({ ok: true, reason: "signature_invalid" });
   });
 });

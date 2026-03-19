@@ -61,8 +61,15 @@ type CompanyExternalPluginConfigRow = typeof companyExternalPluginConfigs.$infer
 
 const META_LEADGEN_PLUGIN_ID = "meta_leadgen";
 const DEFAULT_META_GRAPH_API_VERSION = "v22.0";
+const META_MANAGED_APP_ID_ENV = "SUMMUN_META_MANAGED_APP_ID";
+const META_MANAGED_APP_SECRET_ENV = "SUMMUN_META_MANAGED_APP_SECRET";
+const META_MANAGED_VERIFY_TOKEN_ENV = "SUMMUN_META_MANAGED_VERIFY_TOKEN";
+const META_MANAGED_APP_SECRET_NAME = "meta managed app secret";
+const META_MANAGED_VERIFY_TOKEN_NAME = "meta managed verify token";
 const META_COMPANY_CONFIG_REQUIRED_ERROR =
-  "Meta app configuration is required for this company. Save Meta App ID, App Secret secret, and Verify Token secret in Company Settings.";
+  `Meta app configuration is missing. Configure managed credentials (${META_MANAGED_APP_ID_ENV}, ${META_MANAGED_APP_SECRET_ENV}, ${META_MANAGED_VERIFY_TOKEN_ENV}) or save legacy company-level Meta app settings.`;
+const META_MANAGED_CONFIG_PARTIAL_ERROR =
+  `Managed Meta credentials are partially configured. Set all of ${META_MANAGED_APP_ID_ENV}, ${META_MANAGED_APP_SECRET_ENV}, and ${META_MANAGED_VERIFY_TOKEN_ENV}, or unset all three to use legacy company-level Meta app settings.`;
 
 interface EvaluatedRule {
   rule: ExternalRuleInput;
@@ -91,6 +98,30 @@ interface ProcessEventOptions {
 export interface ExternalWorkflowEngineAdapter {
   readonly name: ExternalWorkflowEngine;
   processEvent(eventId: string, options?: ProcessEventOptions): Promise<ProcessExternalEventResult>;
+}
+
+interface ManagedMetaRuntimeEnv {
+  metaAppId: string;
+  appSecret: string;
+  verifyToken: string;
+}
+
+export function resolveManagedMetaRuntimeEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): ManagedMetaRuntimeEnv | null {
+  const metaAppId = env[META_MANAGED_APP_ID_ENV]?.trim() ?? "";
+  const appSecret = env[META_MANAGED_APP_SECRET_ENV]?.trim() ?? "";
+  const verifyToken = env[META_MANAGED_VERIFY_TOKEN_ENV]?.trim() ?? "";
+  const populatedCount = [metaAppId, appSecret, verifyToken].filter((value) => value.length > 0).length;
+  if (populatedCount === 0) return null;
+  if (populatedCount !== 3) {
+    throw unprocessable(META_MANAGED_CONFIG_PARTIAL_ERROR);
+  }
+  return {
+    metaAppId,
+    appSecret,
+    verifyToken,
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -576,9 +607,71 @@ export function externalIntegrationService(db: Db) {
   }
 
   async function getRequiredMetaRuntimeConfig(companyId: string) {
+    const managedEnv = resolveManagedMetaRuntimeEnv();
+    if (managedEnv) {
+      const ensureManagedSecretRef = async (name: string, value: string, description: string) => {
+        const existing = await secretsSvc.getByName(companyId, name);
+        if (!existing) {
+          const created = await secretsSvc.create(
+            companyId,
+            {
+              name,
+              provider: "local_encrypted",
+              value,
+              description,
+            },
+            { userId: null, agentId: null },
+          );
+          return {
+            type: "secret_ref" as const,
+            secretId: created.id,
+            version: "latest" as const,
+          };
+        }
+
+        const currentValue = await resolveSecret(companyId, {
+          type: "secret_ref",
+          secretId: existing.id,
+          version: "latest",
+        });
+        if (currentValue !== value) {
+          await secretsSvc.rotate(
+            existing.id,
+            { value },
+            { userId: null, agentId: null },
+          );
+        }
+        return {
+          type: "secret_ref" as const,
+          secretId: existing.id,
+          version: "latest" as const,
+        };
+      };
+
+      const appSecretSecretRef = await ensureManagedSecretRef(
+        META_MANAGED_APP_SECRET_NAME,
+        managedEnv.appSecret,
+        "Auto-managed Meta app secret from instance environment settings.",
+      );
+      const verifyTokenSecretRef = await ensureManagedSecretRef(
+        META_MANAGED_VERIFY_TOKEN_NAME,
+        managedEnv.verifyToken,
+        "Auto-managed Meta verify token from instance environment settings.",
+      );
+      return {
+        mode: "managed_env" as const,
+        metaAppId: managedEnv.metaAppId,
+        appSecret: managedEnv.appSecret,
+        appSecretSecretRef,
+        verifyTokenSecret: verifyTokenSecretRef,
+        graphApiVersion: process.env.SUMMUN_META_GRAPH_API_VERSION?.trim() || DEFAULT_META_GRAPH_API_VERSION,
+      };
+    }
+
     const { config } = await getRequiredMetaCompanyConfig(companyId);
     const appSecret = await resolveRequiredSecretRef(companyId, config.appSecret, "appSecret");
     return {
+      mode: "company_config" as const,
       metaAppId: config.metaAppId,
       appSecret,
       appSecretSecretRef: config.appSecret,
@@ -624,15 +717,15 @@ export function externalIntegrationService(db: Db) {
     if (pluginId !== META_LEADGEN_PLUGIN_ID) {
       return sourceConfigInput;
     }
-    const { config } = await getRequiredMetaCompanyConfig(companyId);
+    const metaRuntimeConfig = await getRequiredMetaRuntimeConfig(companyId);
     const graphApiVersion =
       typeof sourceConfigInput.graphApiVersion === "string" && sourceConfigInput.graphApiVersion.length > 0
         ? sourceConfigInput.graphApiVersion
-        : (config.graphApiVersion ?? DEFAULT_META_GRAPH_API_VERSION);
+        : (metaRuntimeConfig.graphApiVersion ?? DEFAULT_META_GRAPH_API_VERSION);
     return {
       ...sourceConfigInput,
-      verifyTokenSecret: config.verifyTokenSecret,
-      appSecret: config.appSecret,
+      verifyTokenSecret: metaRuntimeConfig.verifyTokenSecret,
+      appSecret: metaRuntimeConfig.appSecretSecretRef,
       graphApiVersion,
     };
   }
