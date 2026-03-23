@@ -22,6 +22,7 @@ import { Costs } from "./pages/Costs";
 import { Activity } from "./pages/Activity";
 import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
+import { CompanyIntegrationsBuilder } from "./pages/CompanyIntegrationsBuilder";
 import { DesignGuide } from "./pages/DesignGuide";
 import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
@@ -107,6 +108,7 @@ function boardRoutes() {
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="companies" element={<Companies />} />
       <Route path="company/settings" element={<CompanySettings />} />
+      <Route path="company/integrations" element={<CompanyIntegrationsBuilder />} />
       <Route path="org" element={<OrgChart />} />
       <Route path="agents" element={<Navigate to="/agents/all" replace />} />
       <Route path="agents/all" element={<Agents />} />
@@ -240,6 +242,7 @@ export function App() {
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
           <Route path="company/settings" element={<UnprefixedBoardRedirect />} />
+          <Route path="company/integrations" element={<UnprefixedBoardRedirect />} />
           <Route path=":companyPrefix" element={<Layout />}>
             {boardRoutes()}
           </Route>

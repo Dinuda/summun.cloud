@@ -11,6 +11,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Settings, Check } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
+import { useNavigate } from "@/lib/router";
 import {
   externalRulesConfigSchema,
   type CompanySecret,
@@ -44,6 +45,7 @@ export function CompanySettings() {
   } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // General settings local state
   const [companyName, setCompanyName] = useState("");
@@ -94,9 +96,8 @@ export function CompanySettings() {
   });
 
   const { data: externalSources, isLoading: sourcesLoading } = useQuery({
-    queryKey: queryKeys.external.sources(selectedCompanyId ?? "", sourcePluginId || undefined),
-    queryFn: () =>
-      externalEventSourcesApi.list(selectedCompanyId!, sourcePluginId ? { pluginId: sourcePluginId } : undefined),
+    queryKey: queryKeys.external.sources(selectedCompanyId ?? ""),
+    queryFn: () => externalEventSourcesApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
 
@@ -617,7 +618,7 @@ export function CompanySettings() {
     startMetaOauthMutation.mutate();
   }
 
-  const manualMetaCreateBlocked = activePlugin?.pluginId === "meta_leadgen" && !editingSourceId;
+  const metaSources = (externalSources ?? []).filter((source) => source.pluginId === "meta_leadgen");
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -750,353 +751,55 @@ export function CompanySettings() {
 
       {/* External Plugins */}
       <div className="space-y-4">
-      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           External Sources
         </div>
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <div className="space-y-2 rounded-md border border-border/80 bg-muted/20 px-3 py-3">
-            <p className="text-sm font-medium">Managed Meta App</p>
+            <p className="text-sm font-medium">Managed Meta Integrations</p>
             <p className="text-xs text-muted-foreground">
-              This setup uses instance-managed Meta credentials. Connect with Meta login below, then select page/form.
+              Use the Integrations Builder for one-click Meta OAuth, page/form selection, and source auto-connect.
             </p>
             <p className="text-xs text-muted-foreground">
-              If connect fails immediately, configure <code>SUMMUN_META_MANAGED_APP_ID</code>,
-              {" "}
-              <code>SUMMUN_META_MANAGED_APP_SECRET</code>, and
-              {" "}
-              <code>SUMMUN_META_MANAGED_VERIFY_TOKEN</code> on the server.
+              If connect fails immediately, configure <code>SUMMUN_META_MANAGED_APP_ID</code>,{" "}
+              <code>SUMMUN_META_MANAGED_APP_SECRET</code>, and <code>SUMMUN_META_MANAGED_VERIFY_TOKEN</code> on
+              the server.
             </p>
           </div>
-
-          <Field
-            label="Plugin"
-            hint="Choose the ingestion plugin to configure for this source."
-          >
-            <select
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-              value={sourcePluginId}
-              onChange={(e) => {
-                const nextPluginId = e.target.value;
-                const plugin = (plugins ?? []).find((item) => item.pluginId === nextPluginId) ?? null;
-                setSourcePluginId(nextPluginId);
-                setSourceConfigValues(plugin ? buildDefaultSourceConfigValues(plugin) : {});
-                setMetaPages([]);
-                setMetaForms([]);
-                setMetaPageId("");
-                setMetaFormId("");
-                setMetaConnectMessage(null);
-              }}
-              disabled={!!editingSourceId}
-            >
-              <option value="">Select plugin</option>
-              {(plugins ?? []).map((plugin) => (
-                <option key={plugin.pluginId} value={plugin.pluginId}>
-                  {plugin.name} ({plugin.pluginId})
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field
-            label="Source name"
-            hint="Human-friendly label for this webhook source."
-          >
-            <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-              type="text"
-              value={sourceName}
-              onChange={(e) => setSourceName(e.target.value)}
-              placeholder="Meta Ads - Growth Account"
-            />
-          </Field>
-
-          <Field
-            label="Reviewer agent"
-            hint="Agent assigned to review generated action items."
-          >
-            <select
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-              value={sourceReviewerAgentId}
-              onChange={(e) => setSourceReviewerAgentId(e.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {(agents ?? []).map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field
-            label="Rules config (JSON)"
-            hint='Deterministic rules (for example: {"mode":"any","rules":[...]}).'
-          >
-            <textarea
-              className="h-44 w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 font-mono text-xs outline-none"
-              value={sourceRulesJson}
-              onChange={(e) => setSourceRulesJson(e.target.value)}
-            />
-          </Field>
-
-          <Field
-            label="LLM review template"
-            hint="Template provided to the reviewer context when a rule matches."
-          >
-            <textarea
-              className="h-24 w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-              value={sourceTemplate}
-              onChange={(e) => setSourceTemplate(e.target.value)}
-              placeholder="Review signal {{ruleTitle}} and decide if approval is required."
-            />
-          </Field>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {(activePlugin?.sourceConfigFields ?? []).map((field) => (
-              <PluginConfigFieldInput
-                key={field.key}
-                field={field}
-                value={sourceConfigValues[field.key] ?? ""}
-                companySecrets={companySecrets ?? []}
-                onChange={(next) =>
-                  setSourceConfigValues((prev) => ({
-                    ...prev,
-                    [field.key]: next,
-                  }))
-                }
-              />
-            ))}
-          </div>
-
-          {activePlugin?.pluginId === "meta_leadgen" && (
-            <div className="space-y-3 rounded-md border border-border/80 bg-muted/20 px-3 py-3">
-              <p className="text-sm font-medium">Meta quick connect</p>
-              <p className="text-xs text-muted-foreground">
-                Load pages/forms from Meta, subscribe webhook automatically, and create/update this source in one step.
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleStartMetaOauth}
-                  disabled={startMetaOauthMutation.isPending}
-                >
-                  {startMetaOauthMutation.isPending ? "Redirecting..." : "Connect with Meta login"}
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  Uses instance-managed Meta credentials configured on the server.
-                </span>
-              </div>
-              <Field
-                label="User Access Token Secret"
-                hint="Secret containing a Meta user access token with page management permissions."
-              >
-                <div className="space-y-2">
-                  <select
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    value={metaUserAccessTokenSecretId}
-                    onChange={(e) => setMetaUserAccessTokenSecretId(e.target.value)}
-                  >
-                    <option value="">Select secret</option>
-                    {(companySecrets ?? []).map((secret) => (
-                      <option key={secret.id} value={secret.id}>
-                        {secret.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
-                    type="text"
-                    value={metaUserAccessTokenSecretId}
-                    onChange={(e) => setMetaUserAccessTokenSecretId(e.target.value)}
-                    placeholder="or paste secret UUID"
-                  />
-                </div>
-              </Field>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleLoadMetaPages}
-                  disabled={listMetaPagesMutation.isPending}
-                >
-                  {listMetaPagesMutation.isPending ? "Loading pages..." : "Load Meta pages"}
-                </Button>
-                {metaPages.length > 0 && (
-                  <span className="text-xs text-muted-foreground">{metaPages.length} page(s) found</span>
-                )}
-              </div>
-
-              <Field label="Meta page" hint="Choose the Facebook Page connected to your lead form.">
-                <select
-                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                  value={metaPageId}
-                  onChange={(e) => {
-                    setMetaPageId(e.target.value);
-                    setMetaForms([]);
-                    setMetaFormId("");
-                  }}
-                >
-                  <option value="">Select page</option>
-                  {metaPages.map((page) => (
-                    <option key={page.id} value={page.id}>
-                      {page.name} ({page.id}){page.hasManageLeads ? "" : " - missing MANAGE_LEADS"}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleLoadMetaForms}
-                  disabled={!metaPageId || listMetaFormsMutation.isPending}
-                >
-                  {listMetaFormsMutation.isPending ? "Loading forms..." : "Load lead forms"}
-                </Button>
-                {metaForms.length > 0 && (
-                  <span className="text-xs text-muted-foreground">{metaForms.length} form(s) found</span>
-                )}
-              </div>
-
-              <Field
-                label="Lead form (optional)"
-                hint="Optional form filter for metadata and operations display."
-              >
-                <select
-                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                  value={metaFormId}
-                  onChange={(e) => setMetaFormId(e.target.value)}
-                >
-                  <option value="">All forms</option>
-                  {metaForms.map((form) => (
-                    <option key={form.id} value={form.id}>
-                      {form.name} ({form.status})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleAutoConnectMetaSource}
-                  disabled={connectMetaSourceMutation.isPending}
-                >
-                  {connectMetaSourceMutation.isPending ? "Connecting..." : "Auto-connect Meta source"}
-                </Button>
-                {metaConnectMessage && <span className="text-xs text-emerald-600">{metaConnectMessage}</span>}
-              </div>
-            </div>
-          )}
-
-          {sourceFormError && (
-            <p className="text-xs text-destructive">{sourceFormError}</p>
-          )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              onClick={handleSaveExternalSource}
-              disabled={sourceSaving || manualMetaCreateBlocked}
-            >
-              {sourceSaving
-                ? "Saving..."
-                : editingSourceId
-                  ? "Update source"
-                  : manualMetaCreateBlocked
-                    ? "Use Auto-connect Meta source"
-                    : "Create source"}
+            <Button size="sm" onClick={() => navigate("/company/integrations")}>
+              Open Integrations Builder
             </Button>
-            {editingSourceId && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={resetSourceForm}
-              >
-                Cancel edit
-              </Button>
-            )}
+            <span className="text-xs text-muted-foreground">
+              Default workflow: Facebook Lead Ads trigger → Summun Meta Source Connect action.
+            </span>
           </div>
-        </div>
 
-        <div className="rounded-md border border-border">
-          <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground">
-            Existing sources
-          </div>
-          {sourcesLoading ? (
-            <div className="px-4 py-3 text-sm text-muted-foreground">Loading sources...</div>
-          ) : (externalSources ?? []).length === 0 ? (
-            <div className="px-4 py-3 text-sm text-muted-foreground">No external sources configured.</div>
-          ) : (
-            <div className="divide-y divide-border">
-              {(externalSources ?? []).map((source) => (
-                <div key={source.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
-                  <div className="min-w-0 space-y-1">
+          <div className="rounded-md border border-border">
+            <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+              Meta source status
+            </div>
+            {sourcesLoading ? (
+              <div className="px-3 py-3 text-sm text-muted-foreground">Loading sources...</div>
+            ) : metaSources.length === 0 ? (
+              <div className="px-3 py-3 text-sm text-muted-foreground">
+                No Meta lead sources connected yet.
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {metaSources.slice(0, 3).map((source) => (
+                  <div key={source.id} className="space-y-1 px-3 py-2">
                     <p className="text-sm font-medium">{source.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      Plugin: {source.pluginId} ·
-                      {" "}
-                      Status: {source.status} · Reviewer:{" "}
-                      {agents?.find((agent) => agent.id === source.reviewerAgentId)?.name ??
-                        (source.reviewerAgentId ? source.reviewerAgentId.slice(0, 8) : "unassigned")}
-                    </p>
-                    <p className="text-xs text-muted-foreground font-mono break-all">
-                      Source ID: {source.id}
-                    </p>
-                    <p className="text-xs text-muted-foreground font-mono break-all">
-                      Webhook URL: {webhookUrlForSource(source)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Last webhook: {formatTime(source.lastWebhookAt)} · Last status: {source.lastWebhookStatus ?? "none"}
-                      {source.lastWebhookError ? ` · Error: ${source.lastWebhookError}` : ""}
+                      Status: {source.status} · Last webhook: {formatTime(source.lastWebhookAt)} · Last status:{" "}
+                      {source.lastWebhookStatus ?? "none"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => handleCopyWebhookUrl(source)}>
-                      {copiedWebhookSourceId === source.id ? "Copied URL" : "Copy URL"}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => hydrateSourceForm(source)}>
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const confirmed = window.confirm(`Delete source "${source.name}"?`);
-                        if (!confirmed) return;
-                        deleteSourceMutation.mutate(source.id);
-                      }}
-                      disabled={deleteSourceMutation.isPending}
-                    >
-                      Delete
-                    </Button>
-                    {source.status === "active" ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => pauseSourceMutation.mutate(source.id)}
-                        disabled={pauseSourceMutation.isPending}
-                      >
-                        Pause
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => resumeSourceMutation.mutate(source.id)}
-                        disabled={resumeSourceMutation.isPending}
-                      >
-                        Resume
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
