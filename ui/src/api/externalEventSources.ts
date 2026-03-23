@@ -7,11 +7,13 @@ import type {
   ExternalMetaLeadFormSummary,
   ExternalMetaOauthStartResult,
   ExternalMetaPageSummary,
+  ExternalWhatsAppConnectResult,
   ExternalPluginMetadata,
   ExternalOpsSnapshot,
   MetaConnectFormsInput,
   MetaConnectPagesInput,
   MetaConnectSourceInput,
+  WhatsAppConnectSourceInput,
   ReprocessExternalEventInput,
   RequestActionItemApproval,
   UpdateExternalEventSource,
@@ -78,4 +80,6 @@ export const externalEventSourcesApi = {
       `/companies/${companyId}/external-event-sources/meta/oauth/start${suffix}`,
     );
   },
+  connectWhatsAppBusinessSource: (companyId: string, data: WhatsAppConnectSourceInput) =>
+    api.post<ExternalWhatsAppConnectResult>(`/companies/${companyId}/external-event-sources/whatsapp/connect`, data),
 };

@@ -106,6 +106,7 @@ export {
   metaConnectSourceSchema,
   metaOauthStartQuerySchema,
   metaOauthCallbackQuerySchema,
+  whatsappConnectSourceSchema,
   type ExternalSecretRefInput,
   type ExternalRuleInput,
   type ExternalRulesConfigInput,
@@ -128,6 +129,7 @@ export {
   type MetaConnectSourceInput,
   type MetaOauthStartQueryInput,
   type MetaOauthCallbackQueryInput,
+  type WhatsAppConnectSourceInput,
 } from "./external.js";
 
 export {

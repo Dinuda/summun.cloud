@@ -109,6 +109,14 @@ function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
+export function resolveAgentConfiguredCwd(adapterConfigRaw: unknown): string | null {
+  const adapterConfig = parseObject(adapterConfigRaw);
+  const configuredCwd = readNonEmptyString(adapterConfig.cwd);
+  if (!configuredCwd) return null;
+  if (!path.isAbsolute(configuredCwd)) return null;
+  return path.resolve(configuredCwd);
+}
+
 export function resolveRuntimeSessionParamsForWorkspace(input: {
   agentId: string;
   previousSessionParams: Record<string, unknown> | null;
@@ -499,6 +507,43 @@ export function heartbeatService(db: Db) {
     previousSessionParams: Record<string, unknown> | null,
     opts?: { useProjectWorkspace?: boolean | null },
   ): Promise<ResolvedWorkspaceForRun> {
+    const configuredAgentCwd = resolveAgentConfiguredCwd(agent.adapterConfig);
+    const resolveFallbackWorkspace = async () => {
+      const defaultAgentWorkspaceCwd = resolveDefaultAgentWorkspaceDir(agent.id);
+      const warnings: string[] = [];
+
+      if (configuredAgentCwd) {
+        try {
+          await fs.mkdir(configuredAgentCwd, { recursive: true });
+          const configuredExistsAsDirectory = await fs
+            .stat(configuredAgentCwd)
+            .then((stats) => stats.isDirectory())
+            .catch(() => false);
+          if (configuredExistsAsDirectory) {
+            return {
+              cwd: configuredAgentCwd,
+              source: "configured" as const,
+              warnings,
+            };
+          }
+          warnings.push(
+            `Configured adapter cwd "${configuredAgentCwd}" is not a directory. Using fallback workspace "${defaultAgentWorkspaceCwd}" for this run.`,
+          );
+        } catch (err) {
+          warnings.push(
+            `Configured adapter cwd "${configuredAgentCwd}" is not usable (${err instanceof Error ? err.message : String(err)}). Using fallback workspace "${defaultAgentWorkspaceCwd}" for this run.`,
+          );
+        }
+      }
+
+      await fs.mkdir(defaultAgentWorkspaceCwd, { recursive: true });
+      return {
+        cwd: defaultAgentWorkspaceCwd,
+        source: "instance_default" as const,
+        warnings,
+      };
+    };
+
     const issueId = readNonEmptyString(context.issueId);
     const contextProjectId = readNonEmptyString(context.projectId);
     const issueProjectId = issueId
@@ -560,20 +605,26 @@ export function heartbeatService(db: Db) {
         missingProjectCwds.push(projectCwd);
       }
 
-      const fallbackCwd = resolveDefaultAgentWorkspaceDir(agent.id);
-      await fs.mkdir(fallbackCwd, { recursive: true });
-      const warnings: string[] = [];
+      const fallbackWorkspace = await resolveFallbackWorkspace();
+      const fallbackCwd = fallbackWorkspace.cwd;
+      const warnings: string[] = [...fallbackWorkspace.warnings];
       if (missingProjectCwds.length > 0) {
         const firstMissing = missingProjectCwds[0];
         const extraMissingCount = Math.max(0, missingProjectCwds.length - 1);
         warnings.push(
           extraMissingCount > 0
-            ? `Project workspace path "${firstMissing}" and ${extraMissingCount} other configured path(s) are not available yet. Using fallback workspace "${fallbackCwd}" for this run.`
-            : `Project workspace path "${firstMissing}" is not available yet. Using fallback workspace "${fallbackCwd}" for this run.`,
+            ? `Project workspace path "${firstMissing}" and ${extraMissingCount} other configured path(s) are not available yet. Using ${
+                fallbackWorkspace.source === "configured" ? "configured adapter cwd" : "fallback workspace"
+              } "${fallbackCwd}" for this run.`
+            : `Project workspace path "${firstMissing}" is not available yet. Using ${
+                fallbackWorkspace.source === "configured" ? "configured adapter cwd" : "fallback workspace"
+              } "${fallbackCwd}" for this run.`,
         );
       } else if (!hasConfiguredProjectCwd) {
         warnings.push(
-          `Project workspace has no local cwd configured. Using fallback workspace "${fallbackCwd}" for this run.`,
+          `Project workspace has no local cwd configured. Using ${
+            fallbackWorkspace.source === "configured" ? "configured adapter cwd" : "fallback workspace"
+          } "${fallbackCwd}" for this run.`,
         );
       }
       return {
@@ -608,9 +659,9 @@ export function heartbeatService(db: Db) {
       }
     }
 
-    const cwd = resolveDefaultAgentWorkspaceDir(agent.id);
-    await fs.mkdir(cwd, { recursive: true });
-    const warnings: string[] = [];
+    const fallbackWorkspace = await resolveFallbackWorkspace();
+    const cwd = fallbackWorkspace.cwd;
+    const warnings: string[] = [...fallbackWorkspace.warnings];
     if (sessionCwd) {
       warnings.push(
         `Saved session workspace "${sessionCwd}" is not available. Using fallback workspace "${cwd}" for this run.`,
@@ -619,7 +670,7 @@ export function heartbeatService(db: Db) {
       warnings.push(
         `No project workspace directory is currently available for this issue. Using fallback workspace "${cwd}" for this run.`,
       );
-    } else {
+    } else if (fallbackWorkspace.source !== "configured") {
       warnings.push(
         `No project or prior session workspace was available. Using fallback workspace "${cwd}" for this run.`,
       );
@@ -1155,11 +1206,22 @@ export function heartbeatService(db: Db) {
             id: issues.id,
             identifier: issues.identifier,
             title: issues.title,
+            description: issues.description,
           })
           .from(issues)
           .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
           .then((rows) => rows[0] ?? null)
       : null;
+    if (issueRef) {
+      context.summunIssue = {
+        id: issueRef.id,
+        identifier: issueRef.identifier,
+        title: issueRef.title,
+        description: issueRef.description ?? "",
+      };
+    } else {
+      delete context.summunIssue;
+    }
     const executionWorkspace = await realizeExecutionWorkspace({
       base: {
         baseCwd: resolvedWorkspace.cwd,

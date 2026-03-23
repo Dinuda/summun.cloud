@@ -271,3 +271,14 @@ export interface ExternalMetaConnectResult {
 export interface ExternalMetaOauthStartResult {
   authorizeUrl: string;
 }
+
+export interface ExternalWhatsAppConnectResult {
+  source: ExternalEventSource;
+  apiKeySecretId: string;
+  sessionId: string;
+  sessionStatus: string | null;
+  baseUrl: string;
+  webhookUrl: string;
+  webhookSecretConfigured: boolean;
+  qrCode: string | null;
+}

@@ -52,7 +52,18 @@ function readSourceConfig(source: ExternalPluginSource) {
 }
 
 function parseCreatedTime(value: unknown): Date | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value > 10_000_000_000 ? Math.trunc(value) : Math.trunc(value * 1000);
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
   if (typeof value !== "string" || value.length === 0) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    const ms = numeric > 10_000_000_000 ? Math.trunc(numeric) : Math.trunc(numeric * 1000);
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date;
@@ -237,16 +248,33 @@ export const metaLeadgenPlugin: ExternalIngestionPlugin = {
 
   enrichEvent: async (source, event, ctx) => {
     const config = readSourceConfig(source);
-    const leadResponse = await fetchLeadDetails({
-      source,
-      event,
-      graphApiVersion: config.graphApiVersion,
-      pageAccessTokenSecret: config.pageAccessTokenSecret,
-      resolveSecretRef: ctx.resolveSecretRef,
-      fetchJson: ctx.fetchJson,
-    });
+    let leadResponse: Record<string, unknown> | null = null;
+    let enrichmentError: string | null = null;
+    try {
+      leadResponse = await fetchLeadDetails({
+        source,
+        event,
+        graphApiVersion: config.graphApiVersion,
+        pageAccessTokenSecret: config.pageAccessTokenSecret,
+        resolveSecretRef: ctx.resolveSecretRef,
+        fetchJson: ctx.fetchJson,
+      });
+    } catch (err) {
+      enrichmentError = err instanceof Error ? err.message : String(err);
+    }
 
-    const fieldData = normalizeLeadFieldData(leadResponse.field_data);
+    const fallbackLeadgenId =
+      typeof event.payload.leadgen_id === "string"
+        ? event.payload.leadgen_id
+        : typeof event.providerEventId === "string"
+          ? event.providerEventId
+          : null;
+    const leadgenId = typeof leadResponse?.id === "string" ? leadResponse.id : fallbackLeadgenId;
+    if (!leadgenId) {
+      throw new Error("leadgen_id is missing from Meta webhook payload");
+    }
+
+    const fieldData = leadResponse ? normalizeLeadFieldData(leadResponse.field_data) : {};
     const output: EnrichedExternalEventResult = {
       ruleContext: {
         metrics: {
@@ -255,27 +283,29 @@ export const metaLeadgenPlugin: ExternalIngestionPlugin = {
           hasPhone: typeof fieldData.phone_number === "string" && fieldData.phone_number.length > 0 ? 1 : 0,
         },
         lead: {
-          id: leadResponse.id ?? null,
-          createdTime: leadResponse.created_time ?? null,
+          id: (typeof leadResponse?.id === "string" ? leadResponse.id : leadgenId) ?? null,
+          createdTime: (leadResponse?.created_time as string | null | undefined) ?? null,
           fieldData,
+          enrichmentError,
         },
       },
       leadRecord: {
-        leadgenId: typeof leadResponse.id === "string" ? leadResponse.id : (event.payload.leadgen_id as string),
+        leadgenId,
         pageId: typeof event.payload.page_id === "string" ? event.payload.page_id : null,
         formId: typeof event.payload.form_id === "string" ? event.payload.form_id : null,
         adId: typeof event.payload.ad_id === "string" ? event.payload.ad_id : null,
         adgroupId: typeof event.payload.adgroup_id === "string" ? event.payload.adgroup_id : null,
         campaignId: typeof event.payload.campaign_id === "string" ? event.payload.campaign_id : null,
-        createdTime: parseCreatedTime(leadResponse.created_time ?? event.payload.created_time),
-        status: "enriched",
-        error: null,
+        createdTime: parseCreatedTime((leadResponse?.created_time ?? event.payload.created_time) as unknown),
+        status: enrichmentError ? "failed" : "enriched",
+        error: enrichmentError,
         fieldData,
-        rawPayload: leadResponse,
+        rawPayload: leadResponse ?? event.payload,
       },
       output: {
-        leadgenId: leadResponse.id ?? null,
+        leadgenId,
         graphApiVersion: config.graphApiVersion,
+        enrichmentError,
       },
     };
     return output;

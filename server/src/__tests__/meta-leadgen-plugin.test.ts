@@ -62,38 +62,66 @@ describe("meta leadgen plugin extraction", () => {
     expect(events[0]?.providerEventId).toBe("sample-123");
   });
 
-  it("surfaces Graph API error details during enrichment", async () => {
-    await expect(
-      metaLeadgenPlugin.enrichEvent!(
-        {
-          id: "source-1",
-          companyId: "company-1",
-          pluginId: "meta_leadgen",
-          sourceConfig: {},
-        },
-        {
-          providerEventId: "lead-1",
-          idempotencyHint: "lead-1",
-          eventType: "leadgen",
-          payload: { leadgen_id: "lead-1" },
-        },
-        {
-          resolveSecretRef: async () => "page-token",
-          fetchJson: async () => ({
-            status: 400,
-            body: {
-              error: {
-                message: "Unsupported get request",
-                code: 100,
-                error_subcode: 33,
-              },
+  it("preserves workflow with fallback lead details when Graph enrichment fails", async () => {
+    const result = await metaLeadgenPlugin.enrichEvent!(
+      {
+        id: "source-1",
+        companyId: "company-1",
+        pluginId: "meta_leadgen",
+        sourceConfig: {},
+      },
+      {
+        providerEventId: "lead-1",
+        idempotencyHint: "lead-1",
+        eventType: "leadgen",
+        payload: { leadgen_id: "lead-1" },
+      },
+      {
+        resolveSecretRef: async () => "page-token",
+        fetchJson: async () => ({
+          status: 400,
+          body: {
+            error: {
+              message: "Unsupported get request",
+              code: 100,
+              error_subcode: 33,
             },
-          }),
-        },
-      ),
-    ).rejects.toThrow(
-      "Meta Graph API error (400): Unsupported get request (code 100, subcode 33) [leadgen_id=lead-1]",
+          },
+        }),
+      },
     );
+
+    expect(result.leadRecord?.leadgenId).toBe("lead-1");
+    expect(result.leadRecord?.status).toBe("failed");
+    expect(result.leadRecord?.error).toContain("Unsupported get request");
+    expect(result.ruleContext.metrics.leadCount).toBe(1);
+  });
+
+  it("parses numeric created_time from webhook payload when enrichment fails", async () => {
+    const createdTime = 1774284695;
+    const result = await metaLeadgenPlugin.enrichEvent!(
+      {
+        id: "source-1",
+        companyId: "company-1",
+        pluginId: "meta_leadgen",
+        sourceConfig: {},
+      },
+      {
+        providerEventId: "lead-2",
+        idempotencyHint: "lead-2",
+        eventType: "leadgen",
+        payload: { leadgen_id: "lead-2", created_time: createdTime },
+      },
+      {
+        resolveSecretRef: async () => "page-token",
+        fetchJson: async () => ({
+          status: 400,
+          body: { error: { message: "Unsupported get request", code: 100, error_subcode: 33 } },
+        }),
+      },
+    );
+
+    expect(result.leadRecord?.createdTime?.toISOString()).toBe("2026-03-23T16:51:35.000Z");
   });
 
   it("accepts webhook challenge with configured verify token secret ref", async () => {

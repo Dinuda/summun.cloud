@@ -206,6 +206,34 @@ Legacy fallback:
 - If all three managed variables are unset, existing company-level Meta plugin config is still supported.
 - If only some managed variables are set, Meta connect fails fast with a configuration error until all three are set (or all unset).
 
+## WhatsApp via WaSender Setup
+
+WhatsApp onboarding now uses a direct WaSender API key setup in Integrations Builder.
+
+Requirements:
+
+- Add a company secret for your WaSender Personal Access Token (PAT), or paste the token directly in the builder to auto-create/rotate `wasender api key`.
+- Click **Connect WaSender** in Integrations Builder.
+- Summun will automatically:
+  - resolve the WaSender session (or reuse the provided session id)
+  - configure webhook URL + webhook secret
+  - trigger session connect and return QR payload/status when needed
+- Auto-configured webhook endpoint:
+  - `https://<your-domain>/api/webhooks/meta_whatsapp_business/company/<company-id>`
+
+No additional WhatsApp Meta embedded-signup environment variables are required.
+
+Optional lead auto-reply tuning:
+
+```sh
+# If lead phone is local format (e.g., 077...), prepend this country code for E.164 conversion.
+SUMMUN_WASENDER_DEFAULT_COUNTRY_CODE=+94
+
+# Message template for automatic WhatsApp reply on new Meta leads.
+# Use {{name}} placeholder.
+SUMMUN_WASENDER_LEAD_AUTO_REPLY_TEMPLATE="Hi {{name}}, thanks for your inquiry..."
+```
+
 ## Reset Local Dev Database
 
 To wipe local dev data and start fresh:

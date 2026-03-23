@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 import {
+  resolveAgentConfiguredCwd,
   resolveRuntimeSessionParamsForWorkspace,
   shouldResetTaskSessionForWake,
   type ResolvedWorkspaceForRun,
@@ -85,6 +86,18 @@ describe("resolveRuntimeSessionParamsForWorkspace", () => {
       workspaceId: "workspace-1",
     });
     expect(result.warning).toBeNull();
+  });
+});
+
+describe("resolveAgentConfiguredCwd", () => {
+  it("returns a normalized absolute cwd from adapter config", () => {
+    expect(resolveAgentConfiguredCwd({ cwd: "/tmp/project/../project-a" })).toBe("/tmp/project-a");
+  });
+
+  it("returns null for missing or non-absolute cwd values", () => {
+    expect(resolveAgentConfiguredCwd({})).toBeNull();
+    expect(resolveAgentConfiguredCwd({ cwd: "relative/path" })).toBeNull();
+    expect(resolveAgentConfiguredCwd({ cwd: "   " })).toBeNull();
   });
 });
 

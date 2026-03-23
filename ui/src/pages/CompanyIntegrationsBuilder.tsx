@@ -7,10 +7,8 @@ import { externalEventSourcesApi } from "../api/externalEventSources";
 import { secretsApi } from "../api/secrets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Field } from "../components/agent-config-primitives";
 import {
   externalRulesConfigSchema,
-  type CompanySecret,
   type CreateExternalEventSource,
   type ExternalEventSource,
   type ExternalMetaLeadFormSummary,
@@ -18,6 +16,7 @@ import {
   type ExternalPluginConfigField,
   type ExternalPluginMetadata,
   type MetaConnectSourceInput,
+  type WhatsAppConnectSourceInput,
   type UpdateExternalEventSource,
 } from "@paperclipai/shared";
 
@@ -45,6 +44,12 @@ const SparklesIcon = () => (
 const MetaIcon = () => (
   <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#1877f2] font-bold text-white shadow-sm ring-1 ring-white/10">
     f
+  </span>
+);
+
+const WhatsAppIcon = () => (
+  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#25d366] font-bold text-white shadow-sm ring-1 ring-white/10">
+    w
   </span>
 );
 
@@ -122,11 +127,12 @@ function CompanyIntegrationsBuilderInner() {
   const queryClient = useQueryClient();
 
   const isHandlingOauthRef = useRef(
-    typeof window !== 'undefined' && new URL(window.location.href).searchParams.has("meta_oauth")
+    typeof window !== 'undefined' &&
+      new URL(window.location.href).searchParams.has("meta_oauth")
   );
 
   // Draw State
-  const [activeCard, setActiveCard] = useState<"meta_setup" | "summun_setup" | null>("meta_setup");
+  const [activeCard, setActiveCard] = useState<"meta_setup" | "whatsapp_setup" | "summun_setup" | null>("meta_setup");
   
   // Builder form states
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
@@ -145,6 +151,15 @@ function CompanyIntegrationsBuilderInner() {
   const [metaPages, setMetaPages] = useState<ExternalMetaPageSummary[]>([]);
   const [metaForms, setMetaForms] = useState<ExternalMetaLeadFormSummary[]>([]);
   const [metaConnectMessage, setMetaConnectMessage] = useState<string | null>(null);
+  const [whatsappApiKeySecretId, setWhatsAppApiKeySecretId] = useState("");
+  const [whatsappApiKeyInput, setWhatsAppApiKeyInput] = useState("");
+  const [whatsappSessionId, setWhatsAppSessionId] = useState("");
+  const [whatsappSessionStatus, setWhatsAppSessionStatus] = useState("");
+  const [whatsappWebhookSecret, setWhatsAppWebhookSecret] = useState("");
+  const [whatsappWebhookUrl, setWhatsAppWebhookUrl] = useState("");
+  const [whatsappQrCode, setWhatsAppQrCode] = useState("");
+  const [whatsappBaseUrl, setWhatsAppBaseUrl] = useState("https://wasenderapi.com");
+  const [whatsappConnectMessage, setWhatsAppConnectMessage] = useState<string | null>(null);
 
   // Queries
   const { data: agents } = useQuery({
@@ -181,6 +196,15 @@ function CompanyIntegrationsBuilderInner() {
     );
   }, [plugins, sourcePluginId]);
 
+  const existingMetaSource = useMemo(
+    () => (externalSources ?? []).find((source) => source.pluginId === "meta_leadgen") ?? null,
+    [externalSources],
+  );
+  const existingWhatsAppSource = useMemo(
+    () => (externalSources ?? []).find((source) => source.pluginId === "meta_whatsapp_business") ?? null,
+    [externalSources],
+  );
+
   useEffect(() => {
     if (!plugins || plugins.length === 0) return;
     const metaPlugin = plugins.find((plugin) => plugin.pluginId === "meta_leadgen") ?? plugins[0] ?? null;
@@ -215,10 +239,17 @@ function CompanyIntegrationsBuilderInner() {
     if (isHandlingOauthRef.current || !plugins || plugins.length === 0 || !externalSources) return;
     
     // Only auto-hydrate if we aren't currently editing and haven't already hydrated auth tokens
-    if (!editingSourceId && !metaUserAccessTokenSecretId) {
+    if (!editingSourceId && !metaUserAccessTokenSecretId && !whatsappApiKeySecretId) {
       const primaryMetaSource = externalSources.find((s) => s.pluginId === "meta_leadgen");
       if (primaryMetaSource) {
         hydrateSourceForm(primaryMetaSource);
+        setActiveCard(null); // Keep the config drawer closed
+        return;
+      }
+
+      const primaryWhatsAppSource = externalSources.find((s) => s.pluginId === "meta_whatsapp_business");
+      if (primaryWhatsAppSource) {
+        hydrateSourceForm(primaryWhatsAppSource);
         setActiveCard(null); // Keep the config drawer closed
       }
     }
@@ -251,21 +282,33 @@ function CompanyIntegrationsBuilderInner() {
     const keysToDelete = ["meta_oauth", "meta_oauth_company_id", "meta_user_token_secret_id", "meta_oauth_error"];
     for (const key of keysToDelete) url.searchParams.delete(key);
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-    
-    // Release the lock after OAuth is fully processed
+
     setTimeout(() => {
-        isHandlingOauthRef.current = false;
+      isHandlingOauthRef.current = false;
     }, 100);
   }, [selectedCompanyId, setSelectedCompanyId]);
 
   // Status computation for UI rendering
   const hasMetaTokenSecret = metaUserAccessTokenSecretId.trim().length > 0;
   const hasMetaPageSelection = metaPageId.trim().length > 0;
-  const hasConnectedMetaSource = (externalSources ?? []).some((source) => source.pluginId === "meta_leadgen");
+  const hasConnectedMetaSource = existingMetaSource !== null;
+  const hasConnectedWhatsAppSource = existingWhatsAppSource !== null;
+  const canEditWhatsAppSelection = true;
+  const normalizedWhatsAppBaseUrl = (whatsappBaseUrl.trim() || "https://wasenderapi.com").replace(/\/+$/, "");
+  const normalizedWhatsAppSessionStatus = whatsappSessionStatus.trim().toLowerCase();
+  const isWhatsAppSessionConnected =
+    normalizedWhatsAppSessionStatus === "connected" ||
+    normalizedWhatsAppSessionStatus === "ready" ||
+    normalizedWhatsAppSessionStatus === "open";
+  const waSenderSessionManageUrl = whatsappSessionId
+    ? `${normalizedWhatsAppBaseUrl}/whatsapp/manage/${encodeURIComponent(whatsappSessionId)}`
+    : `${normalizedWhatsAppBaseUrl}/whatsapp`;
   
   const setupDone = hasMetaTokenSecret;
-  const configureDone = hasMetaPageSelection;
-  const testDone = hasConnectedMetaSource;
+  const metaNodeDone = hasMetaTokenSecret || hasConnectedMetaSource;
+  const configureDone = hasMetaPageSelection || hasConnectedMetaSource;
+  const whatsappDone = hasConnectedWhatsAppSource;
+  const testDone = hasConnectedMetaSource && hasConnectedWhatsAppSource;
 
 
   // Flow state mapped to actual application state
@@ -273,21 +316,33 @@ function CompanyIntegrationsBuilderInner() {
     {
       id: "meta_setup",
       type: "integrationNode",
-      position: { x: 250, y: 150 },
+      position: { x: 250, y: 110 },
       data: {
         title: "1. Facebook Lead Ads",
         subtitle: "Captures new leads from Meta campaigns",
         icon: MetaIcon,
-        status: setupDone ? 'connected' : 'action_needed',
+        status: metaNodeDone ? 'connected' : 'action_needed',
         disabled: false
+      },
+    },
+    {
+      id: "whatsapp_setup",
+      type: "integrationNode",
+      position: { x: 250, y: 290 },
+      data: {
+        title: "2. WhatsApp Business",
+        subtitle: "Connect via WaSender API key",
+        icon: WhatsAppIcon,
+        status: whatsappDone ? "connected" : "action_needed",
+        disabled: false,
       },
     },
     {
       id: "summun_setup",
       type: "integrationNode",
-      position: { x: 250, y: 350 },
+      position: { x: 250, y: 470 },
       data: {
-        title: "2. Summun Pipeline",
+        title: "3. Summun Pipeline",
         subtitle: "Where your leads are processed & reviewed",
         icon: SummunIcon,
         status: testDone ? 'connected' : 'pending',
@@ -300,6 +355,14 @@ function CompanyIntegrationsBuilderInner() {
     {
       id: "e1",
       source: "meta_setup",
+      target: "whatsapp_setup",
+      animated: whatsappDone,
+      style: { stroke: whatsappDone ? '#10b981' : '#6366f1', strokeWidth: 2, strokeDasharray: '4 4' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: whatsappDone ? '#10b981' : '#6366f1' },
+    },
+    {
+      id: "e2",
+      source: "whatsapp_setup",
       target: "summun_setup",
       animated: testDone, // ONLY animate when data is flowing (i.e. testDone is true)
       style: { stroke: testDone ? '#10b981' : '#6366f1', strokeWidth: 2, strokeDasharray: '4 4' },
@@ -316,7 +379,13 @@ function CompanyIntegrationsBuilderInner() {
         if (node.id === "meta_setup") {
             return {
                 ...node,
-                data: { ...node.data, status: setupDone ? 'connected' : 'action_needed' }
+                data: { ...node.data, status: metaNodeDone ? 'connected' : 'action_needed' }
+            };
+        }
+        if (node.id === "whatsapp_setup") {
+            return {
+                ...node,
+                data: { ...node.data, status: whatsappDone ? 'connected' : 'action_needed' }
             };
         }
         if (node.id === "summun_setup") {
@@ -330,20 +399,41 @@ function CompanyIntegrationsBuilderInner() {
     setEdges(eds => eds.map(edge => {
         if(edge.id === "e1") {
              return {
-                 ...edge, 
+                 ...edge,
+                 animated: whatsappDone,
+                 style: {
+                   stroke: whatsappDone ? '#10b981' : '#6366f1',
+                   strokeWidth: 2,
+                   strokeDasharray: whatsappDone ? '4 4' : 'none',
+                 }
+             }
+        }
+        if(edge.id === "e2") {
+             return {
+                 ...edge,
                  animated: testDone,
                  style: { stroke: testDone ? '#10b981' : '#6366f1', strokeWidth: 2, strokeDasharray: testDone ? '4 4' : 'none' }
              }
         }
         return edge;
     }))
-  }, [setupDone, testDone, setNodes, setEdges]);
+  }, [metaNodeDone, whatsappDone, testDone, setNodes, setEdges]);
 
 
   const onNodeClick = useCallback((_: any, node: any) => {
      if (node.data.disabled) return;
-     setActiveCard(node.id === activeCard ? null : node.id);
-  }, [activeCard]);
+     if (node.id === activeCard) {
+      setActiveCard(null);
+      return;
+     }
+     if (node.id === "meta_setup" && existingMetaSource) {
+      hydrateSourceForm(existingMetaSource);
+     }
+     if (node.id === "whatsapp_setup" && existingWhatsAppSource) {
+      hydrateSourceForm(existingWhatsAppSource);
+     }
+     setActiveCard(node.id);
+  }, [activeCard, existingMetaSource, existingWhatsAppSource]);
 
   // Mutations
   const deleteSourceMutation = useMutation({
@@ -402,13 +492,40 @@ function CompanyIntegrationsBuilderInner() {
         `Connected ${result.page.name}${result.formId ? ` (form ${result.formId})` : ""}. Source is ready.`,
       );
       hydrateSourceForm(result.source);
-      setActiveCard("summun_setup");
+      setActiveCard("whatsapp_setup");
       await queryClient.invalidateQueries({ queryKey: queryKeys.external.sources(selectedCompanyId ?? "") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.external.metaOps(selectedCompanyId ?? "") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId ?? "") });
     },
     onError: (err) => {
       setSourceFormError(err instanceof Error ? err.message : "Failed to connect Meta source.");
+    },
+  });
+
+  const connectWhatsAppSourceMutation = useMutation({
+    mutationFn: (payload: WhatsAppConnectSourceInput) =>
+      externalEventSourcesApi.connectWhatsAppBusinessSource(selectedCompanyId!, payload),
+    onSuccess: async (result) => {
+      setWhatsAppConnectMessage(
+        `Connected WaSender session ${result.sessionId}${result.sessionStatus ? ` (${result.sessionStatus})` : ""}. Webhook auto-configured.`,
+      );
+      setWhatsAppSessionId(result.sessionId);
+      setWhatsAppSessionStatus(result.sessionStatus ?? "");
+      setWhatsAppWebhookUrl(result.webhookUrl);
+      setWhatsAppQrCode(result.qrCode ?? "");
+      const normalizedStatus = (result.sessionStatus ?? "").toLowerCase();
+      if (normalizedStatus !== "connected" && normalizedStatus !== "ready" && normalizedStatus !== "open") {
+        const manageUrl = `${result.baseUrl.replace(/\/+$/, "")}/whatsapp/manage/${encodeURIComponent(result.sessionId)}`;
+        window.open(manageUrl, "_blank", "noopener,noreferrer");
+      }
+      hydrateSourceForm(result.source);
+      setActiveCard("summun_setup");
+      await queryClient.invalidateQueries({ queryKey: queryKeys.external.sources(selectedCompanyId ?? "") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.external.metaOps(selectedCompanyId ?? "") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId ?? "") });
+    },
+    onError: (err) => {
+      setSourceFormError(err instanceof Error ? err.message : "Failed to connect WhatsApp source.");
     },
   });
 
@@ -441,6 +558,15 @@ function CompanyIntegrationsBuilderInner() {
     setMetaPages([]);
     setMetaForms([]);
     setMetaConnectMessage(null);
+    setWhatsAppApiKeySecretId("");
+    setWhatsAppApiKeyInput("");
+    setWhatsAppSessionId("");
+    setWhatsAppSessionStatus("");
+    setWhatsAppWebhookSecret("");
+    setWhatsAppWebhookUrl("");
+    setWhatsAppQrCode("");
+    setWhatsAppBaseUrl("https://wasenderapi.com");
+    setWhatsAppConnectMessage(null);
     setActiveCard("meta_setup");
   }
 
@@ -448,6 +574,10 @@ function CompanyIntegrationsBuilderInner() {
     const plugin = plugins?.find((item) => item.pluginId === source.pluginId) ?? null;
     const sourceMeta = asRecord(source.metadata);
     const metaConnection = asRecord(sourceMeta?.metaConnection);
+    const whatsappConnection = asRecord(sourceMeta?.whatsappConnection);
+    const sourceConfig = asRecord(source.sourceConfig);
+    const apiKeySecretRef = asRecord(sourceConfig?.apiKeySecret);
+
     setEditingSourceId(source.id);
     setSourceName(source.name);
     setSourceReviewerAgentId(source.reviewerAgentId ?? "");
@@ -459,6 +589,8 @@ function CompanyIntegrationsBuilderInner() {
     
     if (typeof metaConnection?.userAccessTokenSecretId === "string") {
         setMetaUserAccessTokenSecretId(metaConnection.userAccessTokenSecretId);
+    } else if (source.pluginId === "meta_whatsapp_business") {
+      setMetaUserAccessTokenSecretId("");
     }
 
     setMetaPageId(typeof metaConnection?.pageId === "string" ? metaConnection.pageId : "");
@@ -466,11 +598,27 @@ function CompanyIntegrationsBuilderInner() {
     setMetaPages([]);
     setMetaForms([]);
     setMetaConnectMessage(null);
+
+    setWhatsAppApiKeySecretId(
+      typeof apiKeySecretRef?.secretId === "string" ? apiKeySecretRef.secretId : "",
+    );
+    setWhatsAppApiKeyInput("");
+    setWhatsAppSessionId(readString(sourceConfig?.sessionId) ?? readString(whatsappConnection?.sessionId) ?? "");
+    setWhatsAppSessionStatus(readString(whatsappConnection?.sessionStatus) ?? "");
+    setWhatsAppWebhookSecret(readString(sourceConfig?.webhookSecret) ?? "");
+    setWhatsAppWebhookUrl(readString(whatsappConnection?.webhookUrl) ?? webhookUrlForSource(source));
+    setWhatsAppQrCode("");
+    setWhatsAppBaseUrl(
+      readString(sourceConfig?.baseUrl) ??
+      readString(whatsappConnection?.baseUrl) ??
+      "https://wasenderapi.com",
+    );
+    setWhatsAppConnectMessage(null);
   }
 
   function webhookUrlForSource(source: ExternalEventSource) {
-    if (source.pluginId === "meta_leadgen") {
-      return `${window.location.origin}/api/webhooks/meta_leadgen/company/${source.companyId}`;
+    if (source.pluginId === "meta_leadgen" || source.pluginId === "meta_whatsapp_business") {
+      return `${window.location.origin}/api/webhooks/${source.pluginId}/company/${source.companyId}`;
     }
     return `${window.location.origin}/api/webhooks/${source.pluginId}/${source.id}`;
   }
@@ -506,8 +654,12 @@ function CompanyIntegrationsBuilderInner() {
       setSourceFormError("Select a plugin before saving.");
       return;
     }
-    if (activePlugin.pluginId === "meta_leadgen" && !editingSourceId) {
+    if (activePlugin.pluginId === "meta_leadgen" && !existingMetaSource) {
       setSourceFormError("Use Meta quick connect to create the first Meta source.");
+      return;
+    }
+    if (activePlugin.pluginId === "meta_whatsapp_business" && !existingWhatsAppSource) {
+      setSourceFormError("Use WhatsApp quick connect to create the first WhatsApp source.");
       return;
     }
 
@@ -616,7 +768,7 @@ function CompanyIntegrationsBuilderInner() {
     setMetaConnectMessage(null);
 
     const payload: MetaConnectSourceInput = {
-      sourceId: editingSourceId ?? undefined,
+      sourceId: existingMetaSource?.id,
       sourceName: trimmedName,
       reviewerAgentId: sourceReviewerAgentId || null,
       rulesConfig: parsedRules,
@@ -635,6 +787,47 @@ function CompanyIntegrationsBuilderInner() {
     setSourceFormError(null);
     setMetaConnectMessage(null);
     startMetaOauthMutation.mutate();
+  }
+
+  function handleDisconnectMetaAccount() {
+    setMetaUserAccessTokenSecretId("");
+    setMetaPageId("");
+    setMetaFormId("");
+    setMetaPages([]);
+    setMetaForms([]);
+    setMetaConnectMessage(null);
+    setSourceFormError(null);
+  }
+
+  async function handleAutoConnectWhatsAppSource() {
+    if (!selectedCompanyId) return;
+
+    let parsedRules: CreateExternalEventSource["rulesConfig"];
+    try {
+      parsedRules = externalRulesConfigSchema.parse(JSON.parse(sourceRulesJson));
+    } catch {
+      setSourceFormError("Rules config must be valid JSON.");
+      return;
+    }
+
+    setSourcePluginId("meta_whatsapp_business");
+    setSourceFormError(null);
+    setWhatsAppConnectMessage(null);
+
+    const payload: WhatsAppConnectSourceInput = {
+      sourceId: existingWhatsAppSource?.id,
+      sourceName: sourceName.trim() || "WhatsApp Source",
+      reviewerAgentId: sourceReviewerAgentId || null,
+      rulesConfig: parsedRules,
+      llmReviewTemplate: sourceTemplate.trim() || null,
+      apiKeySecretId: whatsappApiKeySecretId.trim() || undefined,
+      apiKey: whatsappApiKeyInput.trim() || undefined,
+      sessionId: whatsappSessionId.trim() || null,
+      webhookSecret: whatsappWebhookSecret.trim() || null,
+      baseUrl: whatsappBaseUrl.trim() || "https://wasenderapi.com",
+    };
+
+    await connectWhatsAppSourceMutation.mutateAsync(payload);
   }
 
   // Effect to automatically load pages if token exists and pages not loaded
@@ -741,7 +934,11 @@ function CompanyIntegrationsBuilderInner() {
                     {/* Header */}
                     <div className="px-6 py-5 border-b border-border flex items-center justify-between bg-card shrink-0">
                         <h2 className="font-semibold text-foreground">
-                            {activeCard === 'meta_setup' ? 'Configure Meta Source' : 'Configure Pipeline'}
+                            {activeCard === 'meta_setup'
+                              ? 'Configure Meta Source'
+                              : activeCard === "whatsapp_setup"
+                                ? "Configure WhatsApp (WaSender)"
+                                : "Configure Pipeline"}
                         </h2>
                         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-muted" onClick={() => setActiveCard(null)}>
                             <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -755,6 +952,16 @@ function CompanyIntegrationsBuilderInner() {
                         {sourceFormError && (
                             <div className="mb-6 rounded-lg bg-destructive/10 p-3 text-sm text-destructive border border-destructive/20">
                                 {sourceFormError}
+                            </div>
+                        )}
+                        {activeCard === "meta_setup" && metaConnectMessage && (
+                            <div className="mb-6 rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-700 border border-emerald-500/20">
+                                {metaConnectMessage}
+                            </div>
+                        )}
+                        {activeCard === "whatsapp_setup" && whatsappConnectMessage && (
+                            <div className="mb-6 rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-700 border border-emerald-500/20">
+                                {whatsappConnectMessage}
                             </div>
                         )}
 
@@ -771,7 +978,7 @@ function CompanyIntegrationsBuilderInner() {
                                             <div className="flex flex-col w-full">
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-sm font-medium text-foreground">Meta Account Connected</span>
-                                                    <Button size="sm" variant="ghost" className="text-muted-foreground h-8 hover:text-destructive" onClick={() => setMetaUserAccessTokenSecretId("")}>
+                                                    <Button size="sm" variant="ghost" className="text-muted-foreground h-8 hover:text-destructive" onClick={handleDisconnectMetaAccount}>
                                                         Disconnect
                                                     </Button>
                                                 </div>
@@ -852,6 +1059,130 @@ function CompanyIntegrationsBuilderInner() {
                                         disabled={connectMetaSourceMutation.isPending || !metaPageId}
                                     >
                                         {connectMetaSourceMutation.isPending ? "Connecting Source..." : "Confirm & Connect Data Source"}
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeCard === "whatsapp_setup" && (
+                            <div className="space-y-8 pb-10">
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-xs font-bold">1</div>
+                                        <label className="text-sm font-medium">Connect WaSender</label>
+                                    </div>
+
+                                    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                                        <p className="text-sm text-muted-foreground">
+                                            Open WaSender, log in, then either paste PAT once below or keep using saved secret <code>wasender api key</code>.
+                                        </p>
+                                        <a
+                                            className="inline-block text-sm font-medium text-emerald-700 hover:underline"
+                                            href={`${normalizedWhatsAppBaseUrl}/login`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >
+                                            Open WaSender in new tab
+                                        </a>
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                                PAT (optional)
+                                            </label>
+                                            <input
+                                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-emerald-500/40"
+                                                type="password"
+                                                value={whatsappApiKeyInput}
+                                                onChange={(e) => setWhatsAppApiKeyInput(e.target.value)}
+                                                placeholder="Paste WaSender Personal Access Token once"
+                                            />
+                                            <p className="text-xs text-muted-foreground">
+                                                If provided, it will auto-save/rotate company secret <code>wasender api key</code>.
+                                            </p>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Click <strong>Connect WaSender</strong> below after login.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className={`space-y-4 transition-all duration-300 ${canEditWhatsAppSelection ? 'opacity-100 translate-y-0' : 'opacity-30 pointer-events-none translate-y-2'}`}>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-xs font-bold">2</div>
+                                        <label className="text-sm font-medium">Session Details</label>
+                                    </div>
+
+                                    <div className="rounded-xl border border-border bg-card p-4 space-y-3 text-sm">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span className="text-muted-foreground">API Key Secret</span>
+                                            <code className="text-xs bg-muted/70 px-2 py-1 rounded break-all">
+                                                {whatsappApiKeySecretId || "wasender api key"}
+                                            </code>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span className="text-muted-foreground">Session ID</span>
+                                            <code className="text-xs bg-muted/70 px-2 py-1 rounded break-all">
+                                                {whatsappSessionId || "Not set"}
+                                            </code>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span className="text-muted-foreground">Session Status</span>
+                                            <code className="text-xs bg-muted/70 px-2 py-1 rounded break-all">
+                                                {whatsappSessionStatus || "Unknown"}
+                                            </code>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span className="text-muted-foreground">Webhook URL</span>
+                                            <code className="text-xs bg-muted/70 px-2 py-1 rounded break-all text-right">
+                                                {whatsappWebhookUrl || "Will auto-configure"}
+                                            </code>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span className="text-muted-foreground">Webhook Secret</span>
+                                            <code className="text-xs bg-muted/70 px-2 py-1 rounded break-all">
+                                                {whatsappWebhookSecret ? "Configured" : "Will auto-generate"}
+                                            </code>
+                                        </div>
+                                    </div>
+
+                                    {whatsappSessionId && !isWhatsAppSessionConnected && (
+                                        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                                            <p className="text-xs text-muted-foreground">
+                                                Session not connected yet. Open WaSender Session to scan QR and finish login.
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="flex-1"
+                                                    onClick={() => window.open(waSenderSessionManageUrl, "_blank", "noopener,noreferrer")}
+                                                >
+                                                    Open WaSender Session
+                                                </Button>
+                                            </div>
+                                            {whatsappQrCode && (
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                                        QR Payload (for debugging)
+                                                    </label>
+                                                    <textarea
+                                                        className="w-full h-24 rounded-lg border border-border bg-background px-3 py-2 text-xs font-mono outline-none"
+                                                        value={whatsappQrCode}
+                                                        readOnly
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="pt-4 border-t border-border transition-all duration-300 opacity-100">
+                                    <Button
+                                        className="w-full shadow-md bg-[#25d366] hover:bg-[#25d366]/90 text-white"
+                                        size="lg"
+                                        onClick={handleAutoConnectWhatsAppSource}
+                                        disabled={connectWhatsAppSourceMutation.isPending}
+                                    >
+                                        {connectWhatsAppSourceMutation.isPending ? "Connecting WaSender..." : "Connect WaSender"}
                                     </Button>
                                 </div>
                             </div>
@@ -941,6 +1272,10 @@ function CompanyIntegrationsBuilderInner() {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function toFormValue(field: ExternalPluginConfigField, value: unknown): string {
