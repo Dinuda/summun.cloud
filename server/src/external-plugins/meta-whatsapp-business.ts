@@ -9,6 +9,7 @@ const secretRefSchema = z.object({
 
 const waSenderWhatsAppSourceConfigSchema = z.object({
   apiKeySecret: secretRefSchema,
+  messageApiKeySecret: secretRefSchema.optional(),
   sessionId: z.string().min(1).optional().nullable(),
   webhookSecret: z.string().min(1).optional().nullable(),
   baseUrl: z.string().url().optional().default("https://wasenderapi.com"),
@@ -43,6 +44,13 @@ export const metaWhatsAppBusinessPlugin: ExternalIngestionPlugin = {
         type: "string",
         required: false,
         description: "Optional WaSender session identifier used by outbound APIs.",
+      },
+      {
+        key: "messageApiKeySecret",
+        label: "WaSender Session API Key Secret",
+        type: "secret_ref",
+        required: false,
+        description: "Secret reference to WaSender session API key used for sending messages.",
       },
       {
         key: "webhookSecret",

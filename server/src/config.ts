@@ -1,5 +1,6 @@
 import { readConfigFile } from "./config-file.js";
 import { existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { config as loadDotenv } from "dotenv";
 import { resolvePaperclipEnvPath } from "./paths.js";
 import {
@@ -115,6 +116,10 @@ export function loadConfig(): Config {
       ? (deploymentModeFromEnvRaw as DeploymentMode)
       : null;
   const deploymentMode: DeploymentMode = deploymentModeFromEnv ?? fileConfig?.server.deploymentMode ?? "local_trusted";
+  if (deploymentMode === "local_trusted" && !(process.env.SUMMUN_AGENT_JWT_SECRET?.trim())) {
+    // Local trusted mode should keep heartbeats in agent auth context even without explicit JWT config.
+    process.env.SUMMUN_AGENT_JWT_SECRET = randomBytes(32).toString("hex");
+  }
   const deploymentExposureFromEnvRaw = process.env.SUMMUN_DEPLOYMENT_EXPOSURE;
   const deploymentExposureFromEnv =
     deploymentExposureFromEnvRaw &&

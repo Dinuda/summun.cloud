@@ -124,6 +124,43 @@ describe("meta leadgen plugin extraction", () => {
     expect(result.leadRecord?.createdTime?.toISOString()).toBe("2026-03-23T16:51:35.000Z");
   });
 
+  it("uses webhook field_data as fallback when Graph enrichment fails", async () => {
+    const result = await metaLeadgenPlugin.enrichEvent!(
+      {
+        id: "source-1",
+        companyId: "company-1",
+        pluginId: "meta_leadgen",
+        sourceConfig: {},
+      },
+      {
+        providerEventId: "lead-3",
+        idempotencyHint: "lead-3",
+        eventType: "leadgen",
+        payload: {
+          leadgen_id: "lead-3",
+          field_data: [
+            { name: "email", values: ["ydinuda@gmail.com"] },
+            { name: "phone_number", values: ["+94767819556"] },
+          ],
+        },
+      },
+      {
+        resolveSecretRef: async () => "page-token",
+        fetchJson: async () => ({
+          status: 400,
+          body: { error: { message: "Unsupported get request", code: 100, error_subcode: 33 } },
+        }),
+      },
+    );
+
+    expect(result.ruleContext.metrics.hasEmail).toBe(1);
+    expect(result.ruleContext.metrics.hasPhone).toBe(1);
+    expect(result.leadRecord?.fieldData).toMatchObject({
+      email: "ydinuda@gmail.com",
+      phone_number: "+94767819556",
+    });
+  });
+
   it("accepts webhook challenge with configured verify token secret ref", async () => {
     const result = await metaLeadgenPlugin.verifyChallenge!(
       {

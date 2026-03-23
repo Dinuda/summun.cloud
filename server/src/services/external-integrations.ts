@@ -70,6 +70,7 @@ const META_MANAGED_VERIFY_TOKEN_ENV = "SUMMUN_META_MANAGED_VERIFY_TOKEN";
 const META_MANAGED_APP_SECRET_NAME = "meta managed app secret";
 const META_MANAGED_VERIFY_TOKEN_NAME = "meta managed verify token";
 const WASENDER_API_KEY_SECRET_NAME = "wasender api key";
+const WASENDER_SESSION_API_KEY_SECRET_NAME = "wasender session api key";
 const DEFAULT_WASENDER_BASE_URL = "https://wasenderapi.com";
 const DEFAULT_WASENDER_WEBHOOK_EVENTS = ["messages.upsert", "messages.received", "session.status"] as const;
 const DEFAULT_WASENDER_LEAD_AUTO_REPLY_TEMPLATE =
@@ -633,11 +634,13 @@ export function externalIntegrationService(db: Db) {
     }
 
     const waConfig = asRecord(whatsappSource.sourceConfig) ?? {};
+    const messageApiKeySecretRef = toSecretRef(waConfig.messageApiKeySecret);
     const apiKeySecretRef = toSecretRef(waConfig.apiKeySecret);
-    if (!apiKeySecretRef) {
+    const tokenSecretRef = messageApiKeySecretRef ?? apiKeySecretRef;
+    if (!tokenSecretRef) {
       return { sent: false, reason: "wasender_api_key_secret_missing" };
     }
-    const waSenderToken = await resolveSecret(input.source.companyId, apiKeySecretRef);
+    const waSenderToken = await resolveSecret(input.source.companyId, tokenSecretRef);
     if (!waSenderToken) {
       return { sent: false, reason: "wasender_api_key_unresolved" };
     }
@@ -2234,6 +2237,7 @@ export function externalIntegrationService(db: Db) {
       const webhookUrl = `${publicBaseUrl}/api/webhooks/${META_WHATSAPP_PLUGIN_ID}/company/${companyId}`;
       const webhookSecret = (input.webhookSecret?.trim() ?? "") || randomBytes(24).toString("hex");
       const waSenderToken = await resolveSecretById(companyId, apiKeySecretId);
+      let messageApiKeySecretId: string | null = null;
 
       let resolvedSessionId = input.sessionId?.trim() ?? "";
       if (!resolvedSessionId) {
@@ -2296,6 +2300,45 @@ export function externalIntegrationService(db: Db) {
       if (sessionIdFromDetails) {
         resolvedSessionId = sessionIdFromDetails;
       }
+      let sessionApiKey =
+        readString(sessionDetails.api_key) ??
+        readString(sessionDetails.apiKey) ??
+        readString(asRecord(sessionDetails.credentials)?.api_key) ??
+        readString(asRecord(sessionDetails.credentials)?.apiKey) ??
+        null;
+      if (!sessionApiKey) {
+        try {
+          const regeneratePayload = await requestWaSender(
+            normalizedBaseUrl,
+            waSenderToken,
+            `/api/whatsapp-sessions/${encodeURIComponent(resolvedSessionId)}/regenerate-key`,
+            { method: "POST" },
+          );
+          const regenerateRecord = asRecord(regeneratePayload);
+          sessionApiKey = readString(regenerateRecord?.api_key) ?? readString(regenerateRecord?.apiKey) ?? null;
+        } catch (err) {
+          logger.warn(
+            { err, companyId, sessionId: resolvedSessionId },
+            "failed to regenerate wasender session api key; send-message may fail with PAT token",
+          );
+        }
+      }
+      if (sessionApiKey) {
+        const existingSessionApiKey = await secretsSvc.getByName(companyId, WASENDER_SESSION_API_KEY_SECRET_NAME);
+        const rotatedOrCreated = existingSessionApiKey
+          ? await secretsSvc.rotate(existingSessionApiKey.id, { value: sessionApiKey }, actor)
+          : await secretsSvc.create(
+              companyId,
+              {
+                name: WASENDER_SESSION_API_KEY_SECRET_NAME,
+                provider: "local_encrypted",
+                value: sessionApiKey,
+                description: "WaSender session API key used for send-message",
+              },
+              actor,
+            );
+        messageApiKeySecretId = rotatedOrCreated.id;
+      }
 
       let qrCode: string | null = null;
       if (!isWaSenderSessionConnected(sessionStatus)) {
@@ -2322,6 +2365,15 @@ export function externalIntegrationService(db: Db) {
           secretId: apiKeySecretId,
           version: "latest" as const,
         },
+        ...(messageApiKeySecretId
+          ? {
+              messageApiKeySecret: {
+                type: "secret_ref" as const,
+                secretId: messageApiKeySecretId,
+                version: "latest" as const,
+              },
+            }
+          : {}),
         sessionId: resolvedSessionId,
         webhookSecret,
         baseUrl: normalizedBaseUrl,

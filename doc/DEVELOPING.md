@@ -189,6 +189,18 @@ Expected:
 - `/api/health` returns `{"status":"ok"}`
 - `/api/companies` returns a JSON array
 
+## Local Agent JWT (Heartbeats)
+
+In `local_trusted` mode, heartbeats need an agent JWT so agent mutations (checkout, issue updates) run as the assigned agent instead of implicit board context.
+
+- Optional explicit config:
+
+```sh
+SUMMUN_AGENT_JWT_SECRET=replace-with-random-secret
+```
+
+- If unset, the server now auto-generates an in-memory secret at startup for local use.
+
 ## Managed Meta Leadgen Setup
 
 For Zapier-style Meta onboarding (connect login, then select page/form), configure instance-level managed credentials:

@@ -274,7 +274,12 @@ export const metaLeadgenPlugin: ExternalIngestionPlugin = {
       throw new Error("leadgen_id is missing from Meta webhook payload");
     }
 
-    const fieldData = leadResponse ? normalizeLeadFieldData(leadResponse.field_data) : {};
+    const webhookFieldData = normalizeLeadFieldData(asRecord(event.payload)?.field_data);
+    const graphFieldData = leadResponse ? normalizeLeadFieldData(leadResponse.field_data) : {};
+    const fieldData = {
+      ...webhookFieldData,
+      ...graphFieldData,
+    };
     const output: EnrichedExternalEventResult = {
       ruleContext: {
         metrics: {
