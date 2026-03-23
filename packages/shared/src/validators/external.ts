@@ -180,3 +180,20 @@ export const metaOauthCallbackQuerySchema = z.object({
   error_description: z.string().optional(),
 });
 export type MetaOauthCallbackQueryInput = z.infer<typeof metaOauthCallbackQuerySchema>;
+
+export const whatsappConnectSourceSchema = z.object({
+  sourceId: z.string().uuid().optional(),
+  sourceName: z.string().min(1).max(120),
+  reviewerAgentId: z.string().uuid().optional().nullable(),
+  rulesConfig: externalRulesConfigSchema.optional().default({
+    mode: "any",
+    rules: [],
+  }),
+  llmReviewTemplate: z.string().max(16_000).optional().nullable(),
+  apiKeySecretId: z.string().uuid().optional(),
+  apiKey: z.string().min(1).optional(),
+  sessionId: z.string().min(1).optional().nullable(),
+  webhookSecret: z.string().min(1).optional().nullable(),
+  baseUrl: z.string().url().optional().default("https://wasenderapi.com"),
+});
+export type WhatsAppConnectSourceInput = z.infer<typeof whatsappConnectSourceSchema>;

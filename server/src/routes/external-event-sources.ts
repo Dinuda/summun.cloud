@@ -13,6 +13,7 @@ import {
   metaConnectSourceSchema,
   metaOauthCallbackQuerySchema,
   metaOauthStartQuerySchema,
+  whatsappConnectSourceSchema,
   reprocessExternalEventSchema,
   requestActionItemApprovalSchema,
   updateExternalEventSourceSchema,
@@ -442,6 +443,47 @@ export function externalEventSourceRoutes(db: Db) {
           pageId: result.page.id,
           pageName: result.page.name,
           formId: result.formId,
+        },
+      });
+
+      res.json(result);
+    },
+  );
+
+  router.post(
+    "/companies/:companyId/external-event-sources/whatsapp/connect",
+    validate(whatsappConnectSourceSchema),
+    async (req, res) => {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const actor = getActorInfo(req);
+      const result = await externalSvc.connectWhatsAppBusinessSource(
+        companyId,
+        req.body,
+        actor.actorType === "user"
+          ? { userId: actor.actorId, agentId: null }
+          : { userId: null, agentId: actor.agentId },
+        {
+          publicBaseUrl: getPublicBaseUrl() ?? requestBaseUrl(req),
+        },
+      );
+
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId ?? null,
+        action: "external_source.whatsapp_connected",
+        entityType: "external_event_source",
+        entityId: result.source.id,
+        details: {
+          sourceId: result.source.id,
+          apiKeySecretId: result.apiKeySecretId,
+          sessionId: result.sessionId,
+          sessionStatus: result.sessionStatus,
+          baseUrl: result.baseUrl,
+          webhookUrl: result.webhookUrl,
         },
       });
 

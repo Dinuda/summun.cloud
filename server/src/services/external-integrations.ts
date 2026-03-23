@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
@@ -17,6 +17,7 @@ import type {
   ExternalMetaConnectResult,
   ExternalMetaLeadFormSummary,
   ExternalMetaPageSummary,
+  ExternalWhatsAppConnectResult,
   ExternalActionItemStatus,
   ExternalOpsSnapshot,
   ExternalOpsSummary,
@@ -30,6 +31,7 @@ import type {
   MetaConnectPagesInput,
   MetaConnectFormsInput,
   MetaConnectSourceInput,
+  WhatsAppConnectSourceInput,
 } from "@paperclipai/shared";
 import { externalWorkflowEngineSchema, metaLeadgenCompanyPluginConfigSchema } from "@paperclipai/shared";
 import { badRequest, conflict, forbidden, notFound, unprocessable } from "../errors.js";
@@ -60,12 +62,19 @@ type ApprovalRow = typeof approvals.$inferSelect;
 type CompanyExternalPluginConfigRow = typeof companyExternalPluginConfigs.$inferSelect;
 
 const META_LEADGEN_PLUGIN_ID = "meta_leadgen";
+const META_WHATSAPP_PLUGIN_ID = "meta_whatsapp_business";
 const DEFAULT_META_GRAPH_API_VERSION = "v22.0";
 const META_MANAGED_APP_ID_ENV = "SUMMUN_META_MANAGED_APP_ID";
 const META_MANAGED_APP_SECRET_ENV = "SUMMUN_META_MANAGED_APP_SECRET";
 const META_MANAGED_VERIFY_TOKEN_ENV = "SUMMUN_META_MANAGED_VERIFY_TOKEN";
 const META_MANAGED_APP_SECRET_NAME = "meta managed app secret";
 const META_MANAGED_VERIFY_TOKEN_NAME = "meta managed verify token";
+const WASENDER_API_KEY_SECRET_NAME = "wasender api key";
+const WASENDER_SESSION_API_KEY_SECRET_NAME = "wasender session api key";
+const DEFAULT_WASENDER_BASE_URL = "https://wasenderapi.com";
+const DEFAULT_WASENDER_WEBHOOK_EVENTS = ["messages.upsert", "messages.received", "session.status"] as const;
+const DEFAULT_WASENDER_LEAD_AUTO_REPLY_TEMPLATE =
+  "Hi {{name}}, thanks for your inquiry. We received your details and will contact you shortly. Could you share your preferred area and budget range?";
 const META_COMPANY_CONFIG_REQUIRED_ERROR =
   `Meta app configuration is missing. Configure managed credentials (${META_MANAGED_APP_ID_ENV}, ${META_MANAGED_APP_SECRET_ENV}, ${META_MANAGED_VERIFY_TOKEN_ENV}) or save legacy company-level Meta app settings.`;
 const META_MANAGED_CONFIG_PARTIAL_ERROR =
@@ -104,6 +113,10 @@ interface ManagedMetaRuntimeEnv {
   metaAppId: string;
   appSecret: string;
   verifyToken: string;
+}
+
+interface ConnectWhatsAppBusinessSourceOptions {
+  publicBaseUrl?: string | null;
 }
 
 export function resolveManagedMetaRuntimeEnv(
@@ -175,18 +188,143 @@ function parseGraphErrorMessage(body: Record<string, unknown>) {
   return message ?? "Meta Graph API error";
 }
 
+function normalizeLeadFieldKey(input: string) {
+  return input.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function collectTextValues(input: unknown): string[] {
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    return trimmed.length > 0 ? [trimmed] : [];
+  }
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return [String(input)];
+  }
+  if (Array.isArray(input)) {
+    return input.flatMap((item) => collectTextValues(item));
+  }
+  return [];
+}
+
+function firstMatchingValue(
+  fieldValuesByKey: Map<string, string[]>,
+  candidateKeys: string[],
+): string | null {
+  for (const key of candidateKeys) {
+    const values = fieldValuesByKey.get(normalizeLeadFieldKey(key)) ?? [];
+    const first = values[0]?.trim();
+    if (first) return first;
+  }
+  return null;
+}
+
+export function normalizePhoneToE164(rawInput: string, defaultCountryCode?: string | null): string | null {
+  const raw = rawInput.trim();
+  if (!raw) return null;
+  const defaultCcDigits = (defaultCountryCode ?? "")
+    .trim()
+    .replace(/^\+/, "")
+    .replace(/\D/g, "");
+
+  const plusNormalized = raw.replace(/[^\d+]/g, "");
+  if (plusNormalized.startsWith("+")) {
+    const digits = plusNormalized.slice(1).replace(/\D/g, "");
+    if (digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+    return null;
+  }
+
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  let candidateDigits = digits;
+  if (candidateDigits.startsWith("00")) {
+    candidateDigits = candidateDigits.slice(2);
+  } else if (defaultCcDigits) {
+    if (candidateDigits.startsWith("0")) {
+      candidateDigits = `${defaultCcDigits}${candidateDigits.slice(1)}`;
+    } else if (!candidateDigits.startsWith(defaultCcDigits) && candidateDigits.length <= 10) {
+      candidateDigits = `${defaultCcDigits}${candidateDigits}`;
+    }
+  }
+  if (candidateDigits.length < 8 || candidateDigits.length > 15) return null;
+  return `+${candidateDigits}`;
+}
+
+export function extractLeadContactForWhatsApp(
+  fieldDataInput: unknown,
+  defaultCountryCode?: string | null,
+): { name: string | null; phoneE164: string | null } {
+  const fieldData = asRecord(fieldDataInput) ?? {};
+  const fieldValuesByKey = new Map<string, string[]>();
+  const allValues: string[] = [];
+
+  for (const [key, value] of Object.entries(fieldData)) {
+    const values = collectTextValues(value);
+    if (values.length === 0) continue;
+    fieldValuesByKey.set(normalizeLeadFieldKey(key), values);
+    allValues.push(...values);
+  }
+
+  const firstName = firstMatchingValue(fieldValuesByKey, ["first_name", "firstname"]);
+  const lastName = firstMatchingValue(fieldValuesByKey, ["last_name", "lastname"]);
+  const combinedName =
+    [firstName, lastName]
+      .map((part) => part?.trim())
+      .filter((part): part is string => Boolean(part && part.length > 0))
+      .join(" ")
+      .trim() || null;
+  const name =
+    combinedName ??
+    firstMatchingValue(fieldValuesByKey, ["full_name", "fullname", "name", "customer_name", "contact_name"]);
+
+  const directPhone =
+    firstMatchingValue(fieldValuesByKey, [
+      "phone_number",
+      "phonenumber",
+      "phone",
+      "mobile_number",
+      "mobilenumber",
+      "mobile",
+      "whatsapp_number",
+      "whatsappnumber",
+      "whatsapp",
+      "contact_number",
+      "contactnumber",
+    ]) ?? null;
+  let phoneCandidate = directPhone;
+  if (!phoneCandidate) {
+    const phoneLike = allValues.find((value) => /(\+?\d[\d()\s.-]{7,}\d)/.test(value));
+    phoneCandidate = phoneLike ?? null;
+  }
+
+  const phoneE164 = phoneCandidate ? normalizePhoneToE164(phoneCandidate, defaultCountryCode) : null;
+  return { name, phoneE164 };
+}
+
 function parseLegacyProviderToPluginId(provider: string | null | undefined): string {
   if (provider === "meta_ads") return META_LEADGEN_PLUGIN_ID;
+  if (provider === "meta_whatsapp" || provider === "wasender_whatsapp") return META_WHATSAPP_PLUGIN_ID;
   return provider ?? META_LEADGEN_PLUGIN_ID;
 }
 
 function deriveProviderFromPluginId(pluginId: string): string {
   if (pluginId === META_LEADGEN_PLUGIN_ID) return "meta_ads";
+  if (pluginId === META_WHATSAPP_PLUGIN_ID) return "wasender_whatsapp";
   return pluginId;
 }
 
 function coerceSourcePluginId(source: ExternalSourceRow) {
   return source.pluginId ?? parseLegacyProviderToPluginId(source.provider);
+}
+
+export function assertSinglePluginSource(
+  sources: Array<{ id: string }>,
+  pluginId: string,
+  excludeSourceId?: string,
+) {
+  const conflictSource = sources.find((source) => source.id !== excludeSourceId);
+  if (conflictSource) {
+    throw conflict(`Only one ${pluginId} source is allowed per company`);
+  }
 }
 
 function toPluginSource(source: ExternalSourceRow): ExternalPluginSource {
@@ -404,6 +542,144 @@ export function externalIntegrationService(db: Db) {
     return payload;
   }
 
+  function parseWaSenderErrorMessage(body: unknown, status: number) {
+    const record = asRecord(body);
+    const directMessage = readString(record?.message);
+    if (directMessage) return directMessage;
+    const directError = readString(record?.error);
+    if (directError) return directError;
+    const nestedError = asRecord(record?.error);
+    const nestedMessage = readString(nestedError?.message);
+    if (nestedMessage) return nestedMessage;
+    const errors = record?.errors;
+    if (Array.isArray(errors)) {
+      const first = errors.find((item) => typeof item === "string");
+      if (typeof first === "string" && first.trim().length > 0) return first.trim();
+    }
+    return `HTTP ${status}`;
+  }
+
+  async function requestWaSender(
+    baseUrl: string,
+    accessToken: string,
+    path: string,
+    init?: {
+      method?: "GET" | "POST" | "PUT" | "DELETE";
+      body?: Record<string, unknown>;
+    },
+  ): Promise<unknown> {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const url = `${baseUrl}${normalizedPath}`;
+    const method = init?.method ?? (init?.body ? "POST" : "GET");
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      },
+      body: init?.body ? JSON.stringify(init.body) : undefined,
+    });
+    const text = await response.text();
+    let payload: unknown = {};
+    try {
+      payload = text ? JSON.parse(text) : {};
+    } catch {
+      payload = { message: text };
+    }
+    const record = asRecord(payload);
+    if (response.status < 200 || response.status >= 300 || record?.success === false) {
+      const message = parseWaSenderErrorMessage(payload, response.status);
+      throw unprocessable(`WaSender API error: ${message}`);
+    }
+    if (record && Object.prototype.hasOwnProperty.call(record, "data")) {
+      return record.data;
+    }
+    return payload;
+  }
+
+  function readWaSenderSessionId(value: unknown): string | null {
+    if (typeof value === "number" && Number.isFinite(value)) return String(Math.trunc(value));
+    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+    return null;
+  }
+
+  function isWaSenderSessionConnected(status: string | null) {
+    if (!status) return false;
+    const normalized = status.trim().toLowerCase();
+    return normalized === "connected" || normalized === "ready" || normalized === "open";
+  }
+
+  function renderWaSenderLeadAutoReplyMessage(name: string | null) {
+    const template = (process.env.SUMMUN_WASENDER_LEAD_AUTO_REPLY_TEMPLATE ?? DEFAULT_WASENDER_LEAD_AUTO_REPLY_TEMPLATE)
+      .trim();
+    const safeName = name?.trim() || "there";
+    return template.replace(/\{\{\s*name\s*\}\}/gi, safeName);
+  }
+
+  async function sendLeadAutoReplyToWaSender(input: {
+    source: ExternalSourceRow;
+    event: ExternalEventRow;
+    lead: EnrichedLeadRecord;
+  }): Promise<{ sent: boolean; reason?: string; to?: string; messageId?: string }> {
+    const whatsappSource = await getSinglePluginSource(input.source.companyId, META_WHATSAPP_PLUGIN_ID);
+    if (!whatsappSource || whatsappSource.status !== "active") {
+      return { sent: false, reason: "whatsapp_source_not_active" };
+    }
+
+    const defaultCountryCode = process.env.SUMMUN_WASENDER_DEFAULT_COUNTRY_CODE ?? null;
+    const contact = extractLeadContactForWhatsApp(input.lead.fieldData, defaultCountryCode);
+    if (!contact.phoneE164) {
+      return { sent: false, reason: "lead_phone_missing" };
+    }
+
+    const waConfig = asRecord(whatsappSource.sourceConfig) ?? {};
+    const messageApiKeySecretRef = toSecretRef(waConfig.messageApiKeySecret);
+    const apiKeySecretRef = toSecretRef(waConfig.apiKeySecret);
+    const tokenSecretRef = messageApiKeySecretRef ?? apiKeySecretRef;
+    if (!tokenSecretRef) {
+      return { sent: false, reason: "wasender_api_key_secret_missing" };
+    }
+    const waSenderToken = await resolveSecret(input.source.companyId, tokenSecretRef);
+    if (!waSenderToken) {
+      return { sent: false, reason: "wasender_api_key_unresolved" };
+    }
+    const baseUrl = (readString(waConfig.baseUrl) ?? DEFAULT_WASENDER_BASE_URL).trim().replace(/\/+$/, "");
+    const text = renderWaSenderLeadAutoReplyMessage(contact.name);
+
+    const sendPayload = await requestWaSender(baseUrl, waSenderToken, "/api/send-message", {
+      method: "POST",
+      body: {
+        to: contact.phoneE164,
+        text,
+      },
+    });
+    const sendRecord = asRecord(sendPayload) ?? {};
+    const messageId = readString(sendRecord.msgId) ?? (typeof sendRecord.msgId === "number" ? String(sendRecord.msgId) : null);
+
+    await logActivity(db, {
+      companyId: input.source.companyId,
+      actorType: "system",
+      actorId: "external_workflow",
+      action: "external_lead.whatsapp_auto_replied",
+      entityType: "external_event",
+      entityId: input.event.id,
+      details: {
+        sourceId: input.source.id,
+        leadgenId: input.lead.leadgenId,
+        phone: contact.phoneE164,
+        whatsappSourceId: whatsappSource.id,
+        messageId,
+      },
+    });
+
+    return {
+      sent: true,
+      to: contact.phoneE164,
+      messageId: messageId ?? undefined,
+    };
+  }
+
   async function getSourceById(id: string) {
     return db
       .select()
@@ -606,54 +882,61 @@ export function externalIntegrationService(db: Db) {
     return value;
   }
 
+  async function ensureManagedSecretRef(
+    companyId: string,
+    name: string,
+    value: string,
+    description: string,
+  ) {
+    const existing = await secretsSvc.getByName(companyId, name);
+    if (!existing) {
+      const created = await secretsSvc.create(
+        companyId,
+        {
+          name,
+          provider: "local_encrypted",
+          value,
+          description,
+        },
+        { userId: null, agentId: null },
+      );
+      return {
+        type: "secret_ref" as const,
+        secretId: created.id,
+        version: "latest" as const,
+      };
+    }
+
+    const currentValue = await resolveSecret(companyId, {
+      type: "secret_ref",
+      secretId: existing.id,
+      version: "latest",
+    });
+    if (currentValue !== value) {
+      await secretsSvc.rotate(
+        existing.id,
+        { value },
+        { userId: null, agentId: null },
+      );
+    }
+    return {
+      type: "secret_ref" as const,
+      secretId: existing.id,
+      version: "latest" as const,
+    };
+  }
+
   async function getRequiredMetaRuntimeConfig(companyId: string) {
     const managedEnv = resolveManagedMetaRuntimeEnv();
     if (managedEnv) {
-      const ensureManagedSecretRef = async (name: string, value: string, description: string) => {
-        const existing = await secretsSvc.getByName(companyId, name);
-        if (!existing) {
-          const created = await secretsSvc.create(
-            companyId,
-            {
-              name,
-              provider: "local_encrypted",
-              value,
-              description,
-            },
-            { userId: null, agentId: null },
-          );
-          return {
-            type: "secret_ref" as const,
-            secretId: created.id,
-            version: "latest" as const,
-          };
-        }
-
-        const currentValue = await resolveSecret(companyId, {
-          type: "secret_ref",
-          secretId: existing.id,
-          version: "latest",
-        });
-        if (currentValue !== value) {
-          await secretsSvc.rotate(
-            existing.id,
-            { value },
-            { userId: null, agentId: null },
-          );
-        }
-        return {
-          type: "secret_ref" as const,
-          secretId: existing.id,
-          version: "latest" as const,
-        };
-      };
-
       const appSecretSecretRef = await ensureManagedSecretRef(
+        companyId,
         META_MANAGED_APP_SECRET_NAME,
         managedEnv.appSecret,
         "Auto-managed Meta app secret from instance environment settings.",
       );
       const verifyTokenSecretRef = await ensureManagedSecretRef(
+        companyId,
         META_MANAGED_VERIFY_TOKEN_NAME,
         managedEnv.verifyToken,
         "Auto-managed Meta verify token from instance environment settings.",
@@ -701,12 +984,9 @@ export function externalIntegrationService(db: Db) {
     return matches[0] ?? null;
   }
 
-  async function assertOneMetaSourcePerCompany(companyId: string, excludeSourceId?: string) {
-    const matches = await listPluginSources(companyId, META_LEADGEN_PLUGIN_ID);
-    const conflictSource = matches.find((source) => source.id !== excludeSourceId);
-    if (conflictSource) {
-      throw conflict("Only one meta_leadgen source is allowed per company");
-    }
+  async function assertOnePluginSourcePerCompany(companyId: string, pluginId: string, excludeSourceId?: string) {
+    const matches = await listPluginSources(companyId, pluginId);
+    assertSinglePluginSource(matches, pluginId, excludeSourceId);
   }
 
   async function normalizeSourceConfigForPlugin(
@@ -1088,6 +1368,27 @@ export function externalIntegrationService(db: Db) {
           });
         }
 
+        let waSenderAutoReplyResult: { sent: boolean; reason?: string; to?: string; messageId?: string } | null = null;
+        if (pluginId === META_LEADGEN_PLUGIN_ID && attempt === 1 && enriched?.leadRecord) {
+          try {
+            waSenderAutoReplyResult = await sendLeadAutoReplyToWaSender({
+              source,
+              event,
+              lead: enriched.leadRecord,
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            logger.warn(
+              { err, sourceId: source.id, eventId: event.id, pluginId },
+              "failed to auto-reply lead via WaSender",
+            );
+            waSenderAutoReplyResult = {
+              sent: false,
+              reason: message,
+            };
+          }
+        }
+
         const ruleContext = plugin.buildRuleContext(pluginSource, extracted, enriched);
         const matches = evaluateRulesConfig(source.rulesConfig, ruleContext);
         if (matches.length === 0) {
@@ -1101,6 +1402,7 @@ export function externalIntegrationService(db: Db) {
                 matchedRules: 0,
                 createdActionItems: 0,
                 createdIssues: 0,
+                waSenderAutoReply: waSenderAutoReplyResult,
               },
               updatedAt: new Date(),
             })
@@ -1121,7 +1423,7 @@ export function externalIntegrationService(db: Db) {
 
         let actionItemsCreated = 0;
         let issuesCreated = 0;
-        const wakeAgents = new Set<string>();
+        const wakeAssignments = new Map<string, { primaryIssueId: string; issueIds: Set<string> }>();
 
         for (const match of matches) {
           const dedupeKey = `${event.idempotencyKey}:${match.ruleKey}`;
@@ -1212,24 +1514,40 @@ export function externalIntegrationService(db: Db) {
           if (!actionItem.issueId) {
             const issue = await createIssueForActionItem(source, actionItem);
             issuesCreated += 1;
-            if (issue.assigneeAgentId) wakeAgents.add(issue.assigneeAgentId);
+            if (issue.assigneeAgentId) {
+              const existingWake = wakeAssignments.get(issue.assigneeAgentId);
+              if (existingWake) {
+                existingWake.issueIds.add(issue.id);
+              } else {
+                wakeAssignments.set(issue.assigneeAgentId, {
+                  primaryIssueId: issue.id,
+                  issueIds: new Set([issue.id]),
+                });
+              }
+            }
           }
         }
 
-        for (const reviewerAgentId of wakeAgents) {
+        for (const [reviewerAgentId, wake] of wakeAssignments.entries()) {
+          const issueIds = Array.from(wake.issueIds);
           try {
             await heartbeat.wakeup(reviewerAgentId, {
-              source: "automation",
+              source: "assignment",
               triggerDetail: "system",
-              reason: "external_action_item_created",
+              reason: "issue_assigned",
               payload: {
+                issueId: wake.primaryIssueId,
+                issueIds,
                 eventId: event.id,
                 sourceId: source.id,
                 pluginId,
+                mutation: "external_event",
               },
               requestedByActorType: "system",
               requestedByActorId: "external_workflow",
               contextSnapshot: {
+                issueId: wake.primaryIssueId,
+                issueIds,
                 source: "external.workflow",
                 wakeReason: "external_action_item_created",
                 eventId: event.id,
@@ -1256,6 +1574,7 @@ export function externalIntegrationService(db: Db) {
               createdActionItems: actionItemsCreated,
               createdIssues: issuesCreated,
               enrichment: enriched?.output ?? null,
+              waSenderAutoReply: waSenderAutoReplyResult,
             },
             updatedAt: new Date(),
           })
@@ -1590,8 +1909,8 @@ export function externalIntegrationService(db: Db) {
     await assertReviewerAgent(companyId, input.reviewerAgentId);
     const pluginId = input.pluginId ?? parseLegacyProviderToPluginId(input.provider);
     const plugin = getExternalIngestionPlugin(pluginId);
-    if (pluginId === META_LEADGEN_PLUGIN_ID) {
-      await assertOneMetaSourcePerCompany(companyId);
+    if (pluginId === META_LEADGEN_PLUGIN_ID || pluginId === META_WHATSAPP_PLUGIN_ID) {
+      await assertOnePluginSourcePerCompany(companyId, pluginId);
     }
     const sourceConfigInput = asRecord(input.sourceConfig) ?? asRecord(input.verificationConfig) ?? {};
     const normalizedSourceConfigInput = await normalizeSourceConfigForPlugin(companyId, pluginId, sourceConfigInput);
@@ -1628,8 +1947,8 @@ export function externalIntegrationService(db: Db) {
 
     const pluginId = patch.pluginId ?? existing.pluginId ?? parseLegacyProviderToPluginId(existing.provider);
     const plugin = getExternalIngestionPlugin(pluginId);
-    if (pluginId === META_LEADGEN_PLUGIN_ID) {
-      await assertOneMetaSourcePerCompany(existing.companyId, existing.id);
+    if (pluginId === META_LEADGEN_PLUGIN_ID || pluginId === META_WHATSAPP_PLUGIN_ID) {
+      await assertOnePluginSourcePerCompany(existing.companyId, pluginId, existing.id);
     }
     const mergedSourceConfigInput =
       patch.sourceConfig !== undefined
@@ -1813,7 +2132,7 @@ export function externalIntegrationService(db: Db) {
         if (coerceSourcePluginId(existingSource) !== META_LEADGEN_PLUGIN_ID) {
           throw unprocessable("Selected source must use the meta_leadgen plugin");
         }
-        await assertOneMetaSourcePerCompany(companyId, sourceId);
+        await assertOnePluginSourcePerCompany(companyId, META_LEADGEN_PLUGIN_ID, sourceId);
         source = await updateSource(sourceId, {
           pluginId: META_LEADGEN_PLUGIN_ID,
           name: input.sourceName,
@@ -1860,6 +2179,276 @@ export function externalIntegrationService(db: Db) {
         },
         formId: input.formId ?? null,
         pageAccessTokenSecretId: pageTokenSecret.id,
+      };
+    },
+
+    connectWhatsAppBusinessSource: async (
+      companyId: string,
+      input: WhatsAppConnectSourceInput,
+      actor?: { userId?: string | null; agentId?: string | null },
+      options?: ConnectWhatsAppBusinessSourceOptions,
+    ): Promise<ExternalWhatsAppConnectResult> => {
+      const rawApiKey = input.apiKey?.trim() ?? "";
+      let apiKeySecretId = input.apiKeySecretId ?? null;
+      if (rawApiKey) {
+        if (apiKeySecretId) {
+          await assertSecretInCompany(companyId, apiKeySecretId);
+          const rotated = await secretsSvc.rotate(apiKeySecretId, { value: rawApiKey }, actor);
+          apiKeySecretId = rotated.id;
+        } else {
+          const existingApiKey = await secretsSvc.getByName(companyId, WASENDER_API_KEY_SECRET_NAME);
+          const rotatedOrCreated = existingApiKey
+            ? await secretsSvc.rotate(existingApiKey.id, { value: rawApiKey }, actor)
+            : await secretsSvc.create(
+                companyId,
+                {
+                  name: WASENDER_API_KEY_SECRET_NAME,
+                  provider: "local_encrypted",
+                  value: rawApiKey,
+                  description: "WaSender API key for WhatsApp source",
+                },
+                actor,
+              );
+          apiKeySecretId = rotatedOrCreated.id;
+        }
+      } else if (apiKeySecretId) {
+        await assertSecretInCompany(companyId, apiKeySecretId);
+      } else {
+        const existingApiKey = await secretsSvc.getByName(companyId, WASENDER_API_KEY_SECRET_NAME);
+        if (!existingApiKey) {
+          throw unprocessable(
+            "WaSender token not found. Log in to WaSender, generate a Personal Access Token, and save it as company secret `wasender api key`.",
+          );
+        }
+        apiKeySecretId = existingApiKey.id;
+      }
+      if (!apiKeySecretId) {
+        throw unprocessable("WaSender API key secret could not be resolved");
+      }
+      await assertReviewerAgent(companyId, input.reviewerAgentId ?? null);
+
+      const normalizedBaseUrl = (input.baseUrl ?? DEFAULT_WASENDER_BASE_URL).trim().replace(/\/+$/, "");
+      const publicBaseUrl = (options?.publicBaseUrl ?? process.env.SUMMUN_PUBLIC_BASE_URL ?? "").trim().replace(/\/+$/, "");
+      if (!publicBaseUrl) {
+        throw unprocessable(
+          "Public base URL is required to auto-configure WaSender webhook. Set SUMMUN_PUBLIC_BASE_URL or run behind a forwarded host/protocol.",
+        );
+      }
+      const webhookUrl = `${publicBaseUrl}/api/webhooks/${META_WHATSAPP_PLUGIN_ID}/company/${companyId}`;
+      const webhookSecret = (input.webhookSecret?.trim() ?? "") || randomBytes(24).toString("hex");
+      const waSenderToken = await resolveSecretById(companyId, apiKeySecretId);
+      let messageApiKeySecretId: string | null = null;
+
+      let resolvedSessionId = input.sessionId?.trim() ?? "";
+      if (!resolvedSessionId) {
+        const sessionsPayload = await requestWaSender(normalizedBaseUrl, waSenderToken, "/api/whatsapp-sessions", {
+          method: "GET",
+        });
+        const sessionRows = Array.isArray(sessionsPayload) ? sessionsPayload : [];
+        const sessionRecords = sessionRows
+          .map((row) => asRecord(row))
+          .filter((row): row is Record<string, unknown> => row !== null);
+        const preferredSession =
+          sessionRecords.find((row) => isWaSenderSessionConnected(readString(row.status))) ??
+          sessionRecords[0] ??
+          null;
+        resolvedSessionId = preferredSession ? readWaSenderSessionId(preferredSession.id) ?? "" : "";
+      }
+      if (!resolvedSessionId) {
+        throw unprocessable(
+          "No WaSender session found for this API token. Create a session in WaSender, then reconnect.",
+        );
+      }
+
+      await requestWaSender(
+        normalizedBaseUrl,
+        waSenderToken,
+        `/api/whatsapp-sessions/${encodeURIComponent(resolvedSessionId)}`,
+        {
+          method: "PUT",
+          body: {
+            webhook_url: webhookUrl,
+            webhook_enabled: true,
+            webhook_events: [...DEFAULT_WASENDER_WEBHOOK_EVENTS],
+            webhook_secret: webhookSecret,
+          },
+        },
+      );
+
+      try {
+        await requestWaSender(
+          normalizedBaseUrl,
+          waSenderToken,
+          `/api/whatsapp-sessions/${encodeURIComponent(resolvedSessionId)}/connect`,
+          { method: "POST" },
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message.toLowerCase() : "";
+        const alreadyConnected = message.includes("already") && message.includes("connect");
+        if (!alreadyConnected) throw err;
+      }
+
+      const sessionDetailsPayload = await requestWaSender(
+        normalizedBaseUrl,
+        waSenderToken,
+        `/api/whatsapp-sessions/${encodeURIComponent(resolvedSessionId)}`,
+        { method: "GET" },
+      );
+      const sessionDetails = asRecord(sessionDetailsPayload) ?? {};
+      const sessionStatus = readString(sessionDetails.status);
+      const sessionIdFromDetails = readWaSenderSessionId(sessionDetails.id);
+      if (sessionIdFromDetails) {
+        resolvedSessionId = sessionIdFromDetails;
+      }
+      let sessionApiKey =
+        readString(sessionDetails.api_key) ??
+        readString(sessionDetails.apiKey) ??
+        readString(asRecord(sessionDetails.credentials)?.api_key) ??
+        readString(asRecord(sessionDetails.credentials)?.apiKey) ??
+        null;
+      if (!sessionApiKey) {
+        try {
+          const regeneratePayload = await requestWaSender(
+            normalizedBaseUrl,
+            waSenderToken,
+            `/api/whatsapp-sessions/${encodeURIComponent(resolvedSessionId)}/regenerate-key`,
+            { method: "POST" },
+          );
+          const regenerateRecord = asRecord(regeneratePayload);
+          sessionApiKey = readString(regenerateRecord?.api_key) ?? readString(regenerateRecord?.apiKey) ?? null;
+        } catch (err) {
+          logger.warn(
+            { err, companyId, sessionId: resolvedSessionId },
+            "failed to regenerate wasender session api key; send-message may fail with PAT token",
+          );
+        }
+      }
+      if (sessionApiKey) {
+        const existingSessionApiKey = await secretsSvc.getByName(companyId, WASENDER_SESSION_API_KEY_SECRET_NAME);
+        const rotatedOrCreated = existingSessionApiKey
+          ? await secretsSvc.rotate(existingSessionApiKey.id, { value: sessionApiKey }, actor)
+          : await secretsSvc.create(
+              companyId,
+              {
+                name: WASENDER_SESSION_API_KEY_SECRET_NAME,
+                provider: "local_encrypted",
+                value: sessionApiKey,
+                description: "WaSender session API key used for send-message",
+              },
+              actor,
+            );
+        messageApiKeySecretId = rotatedOrCreated.id;
+      }
+
+      let qrCode: string | null = null;
+      if (!isWaSenderSessionConnected(sessionStatus)) {
+        try {
+          const qrPayload = await requestWaSender(
+            normalizedBaseUrl,
+            waSenderToken,
+            `/api/whatsapp-sessions/${encodeURIComponent(resolvedSessionId)}/qrcode`,
+            { method: "GET" },
+          );
+          const qrRecord = asRecord(qrPayload);
+          qrCode = readString(qrRecord?.qrCode) ?? readString(qrRecord?.qr_code);
+        } catch (err) {
+          logger.warn(
+            { err, companyId, sessionId: resolvedSessionId },
+            "failed to fetch wasender qr code; continuing with configured source",
+          );
+        }
+      }
+
+      const sourceConfig = {
+        apiKeySecret: {
+          type: "secret_ref" as const,
+          secretId: apiKeySecretId,
+          version: "latest" as const,
+        },
+        ...(messageApiKeySecretId
+          ? {
+              messageApiKeySecret: {
+                type: "secret_ref" as const,
+                secretId: messageApiKeySecretId,
+                version: "latest" as const,
+              },
+            }
+          : {}),
+        sessionId: resolvedSessionId,
+        webhookSecret,
+        baseUrl: normalizedBaseUrl,
+      };
+
+      const metadata = {
+        whatsappConnection: {
+          provider: "wasender",
+          sessionId: resolvedSessionId,
+          sessionStatus,
+          webhookUrl,
+          webhookSecretConfigured: true,
+          baseUrl: normalizedBaseUrl,
+          qrCodeAvailable: Boolean(qrCode),
+          connectedAt: new Date().toISOString(),
+        },
+      };
+
+      let source;
+      if (input.sourceId) {
+        const sourceId = input.sourceId;
+        const existingSource = await getSourceById(sourceId);
+        if (!existingSource || existingSource.companyId !== companyId) {
+          throw notFound("External event source not found");
+        }
+        if (coerceSourcePluginId(existingSource) !== META_WHATSAPP_PLUGIN_ID) {
+          throw unprocessable("Selected source must use the meta_whatsapp_business plugin");
+        }
+        await assertOnePluginSourcePerCompany(companyId, META_WHATSAPP_PLUGIN_ID, sourceId);
+        source = await updateSource(sourceId, {
+          pluginId: META_WHATSAPP_PLUGIN_ID,
+          name: input.sourceName,
+          reviewerAgentId: input.reviewerAgentId ?? null,
+          rulesConfig: input.rulesConfig,
+          llmReviewTemplate: input.llmReviewTemplate ?? null,
+          sourceConfig,
+          metadata,
+          status: existingSource.status === "paused" ? "paused" : "active",
+        });
+      } else {
+        const existingSource = await getSinglePluginSource(companyId, META_WHATSAPP_PLUGIN_ID);
+        if (existingSource) {
+          source = await updateSource(existingSource.id, {
+            pluginId: META_WHATSAPP_PLUGIN_ID,
+            name: input.sourceName,
+            reviewerAgentId: input.reviewerAgentId ?? null,
+            rulesConfig: input.rulesConfig,
+            llmReviewTemplate: input.llmReviewTemplate ?? null,
+            sourceConfig,
+            metadata,
+            status: existingSource.status === "paused" ? "paused" : "active",
+          });
+        } else {
+          source = await createSource(companyId, {
+            pluginId: META_WHATSAPP_PLUGIN_ID,
+            name: input.sourceName,
+            status: "active",
+            reviewerAgentId: input.reviewerAgentId ?? null,
+            rulesConfig: input.rulesConfig,
+            llmReviewTemplate: input.llmReviewTemplate ?? null,
+            sourceConfig,
+            metadata,
+          });
+        }
+      }
+
+      return {
+        source: source as unknown as ExternalWhatsAppConnectResult["source"],
+        apiKeySecretId,
+        sessionId: resolvedSessionId,
+        sessionStatus,
+        baseUrl: normalizedBaseUrl,
+        webhookUrl,
+        webhookSecretConfigured: true,
+        qrCode,
       };
     },
 

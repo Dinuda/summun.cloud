@@ -161,10 +161,10 @@ export const APPROVAL_STATUSES = [
 ] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
-export const EXTERNAL_SOURCE_PROVIDERS = ["meta_ads"] as const;
+export const EXTERNAL_SOURCE_PROVIDERS = ["meta_ads", "meta_whatsapp", "wasender_whatsapp"] as const;
 export type ExternalSourceProvider = (typeof EXTERNAL_SOURCE_PROVIDERS)[number];
 
-export const EXTERNAL_PLUGIN_IDS = ["meta_leadgen"] as const;
+export const EXTERNAL_PLUGIN_IDS = ["meta_leadgen", "meta_whatsapp_business"] as const;
 export type ExternalPluginId = (typeof EXTERNAL_PLUGIN_IDS)[number];
 
 export const EXTERNAL_SOURCE_STATUSES = ["active", "paused"] as const;

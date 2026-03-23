@@ -50,6 +50,7 @@ export type {
   ExternalMetaLeadFormSummary,
   ExternalMetaConnectResult,
   ExternalMetaOauthStartResult,
+  ExternalWhatsAppConnectResult,
   ExternalOpsSummary,
   ExternalOpsRecentEvent,
   ExternalOpsRecentActionItem,

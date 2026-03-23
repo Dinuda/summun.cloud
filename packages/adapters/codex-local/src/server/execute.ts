@@ -26,6 +26,7 @@ const SUMMUN_SKILLS_CANDIDATES = [
 ];
 const CODEX_ROLLOUT_NOISE_RE =
   /^\d{4}-\d{2}-\d{2}T[^\s]+\s+ERROR\s+codex_core::rollout::list:\s+state db missing rollout path for thread\s+[a-z0-9-]+$/i;
+const MAX_ISSUE_DESCRIPTION_CHARS = 8_000;
 
 function stripCodexRolloutNoise(text: string): string {
   const parts = text.split(/\r?\n/);
@@ -49,6 +50,11 @@ function firstNonEmptyLine(text: string): string {
       .map((line) => line.trim())
       .find(Boolean) ?? ""
   );
+}
+
+function truncatePromptText(input: string, maxChars: number): string {
+  if (input.length <= maxChars) return input;
+  return `${input.slice(0, maxChars)}\n...truncated`;
 }
 
 function hasNonEmptyEnvValue(env: Record<string, string>, key: string): boolean {
@@ -310,7 +316,37 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     run: { id: runId, source: "on_demand" },
     context,
   });
-  const prompt = `${instructionsPrefix}${renderedPrompt}`;
+  const wakeIssueId =
+    (typeof context.issueId === "string" && context.issueId.trim().length > 0 && context.issueId.trim()) ||
+    (typeof context.taskId === "string" && context.taskId.trim().length > 0 && context.taskId.trim()) ||
+    "";
+  const issueContext = parseObject(context.summunIssue);
+  const wakeIssueIdentifier = asString(issueContext.identifier, "").trim();
+  const wakeIssueTitle = asString(issueContext.title, "").trim();
+  const wakeIssueDescriptionRaw = asString(issueContext.description, "").trim();
+  const wakeIssueDescription = wakeIssueDescriptionRaw
+    ? truncatePromptText(wakeIssueDescriptionRaw, MAX_ISSUE_DESCRIPTION_CHARS)
+    : "";
+  const issueExecutionOverlay =
+    wakeIssueId.length > 0
+      ? [
+          "",
+          "Assigned issue context for this run:",
+          `Issue ID: ${wakeIssueId}`,
+          wakeIssueIdentifier ? `Issue key: ${wakeIssueIdentifier}` : "",
+          wakeIssueTitle ? `Issue title: ${wakeIssueTitle}` : "",
+          wakeIssueDescription ? `Issue description:\n${wakeIssueDescription}` : "",
+          "",
+          "Execution requirements:",
+          "- Do not ask the board user to re-provide this lead.",
+          "- Use the issue details above as the primary input.",
+          "- Perform the requested lead-follow-up action now.",
+          "- If more details are needed, fetch latest issue/comments via SUMMUN_API_URL + SUMMUN_API_KEY.",
+        ]
+          .filter((line) => line.length > 0)
+          .join("\n")
+      : "";
+  const prompt = `${instructionsPrefix}${renderedPrompt}${issueExecutionOverlay}`;
 
   const buildArgs = (resumeSessionId: string | null) => {
     const args = ["exec", "--json"];

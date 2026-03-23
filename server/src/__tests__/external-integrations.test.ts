@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertSinglePluginSource,
   deriveEventIdempotencyKey,
   evaluateRulesConfig,
+  extractLeadContactForWhatsApp,
   extractNumericMetric,
+  normalizePhoneToE164,
   resolveManagedMetaRuntimeEnv,
 } from "../services/external-integrations.js";
 
@@ -86,5 +89,43 @@ describe("external integration helpers", () => {
         SUMMUN_META_MANAGED_APP_SECRET: "app-secret",
       }),
     ).toThrow("Managed Meta credentials are partially configured.");
+  });
+
+  it("enforces one-source-per-company guard for plugin sources", () => {
+    expect(() =>
+      assertSinglePluginSource(
+        [{ id: "source-1" }, { id: "source-2" }],
+        "meta_whatsapp_business",
+      ),
+    ).toThrow("Only one meta_whatsapp_business source is allowed per company");
+  });
+
+  it("allows updating the existing plugin source when exclude id is provided", () => {
+    expect(() =>
+      assertSinglePluginSource(
+        [{ id: "source-1" }],
+        "meta_whatsapp_business",
+        "source-1",
+      ),
+    ).not.toThrow();
+  });
+
+  it("normalizes lead phone values to e164", () => {
+    expect(normalizePhoneToE164("+94 77 123 4567")).toBe("+94771234567");
+    expect(normalizePhoneToE164("0771234567", "+94")).toBe("+94771234567");
+    expect(normalizePhoneToE164("0094-77-123-4567")).toBe("+94771234567");
+    expect(normalizePhoneToE164("123")).toBeNull();
+  });
+
+  it("extracts lead contact name and phone from enriched field data", () => {
+    const contact = extractLeadContactForWhatsApp(
+      {
+        full_name: "Dinuda Yaggahavita",
+        phone_number: "0771234567",
+      },
+      "+94",
+    );
+    expect(contact.name).toBe("Dinuda Yaggahavita");
+    expect(contact.phoneE164).toBe("+94771234567");
   });
 });

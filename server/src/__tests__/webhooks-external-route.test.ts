@@ -100,4 +100,52 @@ describe("external webhook routes", () => {
       },
     );
   });
+
+  it("routes generic company challenge requests for plugin ids", async () => {
+    mockExternalService.verifyWebhookChallengeForCompany.mockResolvedValue({
+      ok: true,
+      challenge: "company-challenge-456",
+    });
+
+    const res = await request(createApp()).get("/api/webhooks/meta_whatsapp_business/company/company-2").query({
+      "hub.mode": "subscribe",
+      "hub.verify_token": "token",
+      "hub.challenge": "company-challenge-456",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.text).toBe("company-challenge-456");
+    expect(mockExternalService.verifyWebhookChallengeForCompany).toHaveBeenCalledWith(
+      "meta_whatsapp_business",
+      "company-2",
+      {
+        mode: "subscribe",
+        token: "token",
+        challenge: "company-challenge-456",
+      },
+    );
+  });
+
+  it("routes generic company deliveries for plugin ids", async () => {
+    mockExternalService.ingestWebhookForCompany.mockResolvedValue({
+      kind: "accepted",
+      event: { id: "event-2" },
+      run: { id: "run-2" },
+    });
+
+    const res = await request(createApp())
+      .post("/api/webhooks/meta_whatsapp_business/company/company-2")
+      .set("x-hub-signature-256", "sha256=abc")
+      .send({ object: "whatsapp_business_account", entry: [] });
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({
+      accepted: true,
+      duplicate: false,
+      ignored: false,
+      eventId: "event-2",
+      workflowRunId: "run-2",
+    });
+    expect(mockExternalService.ingestWebhookForCompany).toHaveBeenCalled();
+  });
 });
