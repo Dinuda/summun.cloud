@@ -232,6 +232,13 @@
       "when": 1774350161862,
       "tag": "0032_futuristic_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1774360809159,
+      "tag": "0033_bored_ezekiel_stane",
+      "breakpoints": true
     }
   ]
 }

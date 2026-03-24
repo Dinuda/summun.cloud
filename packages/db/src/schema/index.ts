@@ -40,3 +40,4 @@ export { companySecrets } from "./company_secrets.js";
 export { companySecretVersions } from "./company_secret_versions.js";
 export { departments } from "./departments.js";
 export { departmentMembers } from "./department_members.js";
+export { knowledgeEntries, knowledgeIngestionCursors } from "./knowledge_entries.js";

@@ -27,6 +27,7 @@ import { DesignGuide } from "./pages/DesignGuide";
 import { OrgChart } from "./pages/OrgChart";
 import { DepartmentDetail } from "./pages/DepartmentDetail";
 import { SignalDetail } from "./pages/SignalDetail";
+import { Knowledge } from "./pages/Knowledge";
 import { NewAgent } from "./pages/NewAgent";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
@@ -147,6 +148,7 @@ function boardRoutes() {
       <Route path="inbox" element={<Navigate to="/inbox/new" replace />} />
       <Route path="inbox/new" element={<Inbox />} />
       <Route path="inbox/all" element={<Inbox />} />
+      <Route path="knowledge" element={<Knowledge />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="*" element={<NotFoundPage scope="board" />} />
     </>
@@ -247,6 +249,7 @@ export function App() {
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
           <Route path="departments/:departmentId" element={<UnprefixedBoardRedirect />} />
           <Route path="departments/:departmentId/signals/:signalId" element={<UnprefixedBoardRedirect />} />
+          <Route path="knowledge" element={<UnprefixedBoardRedirect />} />
           <Route path="company/settings" element={<UnprefixedBoardRedirect />} />
           <Route path="company/integrations" element={<UnprefixedBoardRedirect />} />
           <Route path=":companyPrefix" element={<Layout />}>

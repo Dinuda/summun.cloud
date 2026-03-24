@@ -38,6 +38,11 @@ export {
   JOIN_REQUEST_TYPES,
   JOIN_REQUEST_STATUSES,
   PERMISSION_KEYS,
+  KNOWLEDGE_SCOPES,
+  KNOWLEDGE_KINDS,
+  KNOWLEDGE_QUALITIES,
+  KNOWLEDGE_KIND_LABELS,
+  KNOWLEDGE_KIND_COLORS,
   type CompanyStatus,
   type DeploymentMode,
   type DeploymentExposure,
@@ -75,6 +80,9 @@ export {
   type JoinRequestType,
   type JoinRequestStatus,
   type PermissionKey,
+  type KnowledgeScope,
+  type KnowledgeKind,
+  type KnowledgeQuality,
 } from "./constants.js";
 
 export type {
@@ -182,6 +190,11 @@ export type {
   ChannelHealth,
   SignalTransformation,
   TransformationStage,
+  KnowledgeEntry,
+  KnowledgeSearchHit,
+  KnowledgeSearchResult,
+  KnowledgeIngestionStats,
+  IngestionResult,
 } from "./types/index.js";
 
 export {
@@ -347,6 +360,12 @@ export {
   type UpdateDepartment,
   type AddDepartmentMember,
   type UpdateDepartmentMember,
+  createKnowledgeEntrySchema,
+  updateKnowledgeEntrySchema,
+  knowledgeSearchQuerySchema,
+  type CreateKnowledgeEntry,
+  type UpdateKnowledgeEntry,
+  type KnowledgeSearchQuery,
 } from "./validators/index.js";
 
 export { DEPARTMENT_TEMPLATES } from "./types/index.js";

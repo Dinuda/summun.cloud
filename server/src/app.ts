@@ -27,6 +27,7 @@ import { accessRoutes } from "./routes/access.js";
 import { externalEventSourceRoutes } from "./routes/external-event-sources.js";
 import { webhooksExternalRoutes } from "./routes/webhooks-external.js";
 import { departmentRoutes } from "./routes/departments.js";
+import { knowledgeRoutes } from "./routes/knowledge.js";
 import { applyUiBranding } from "./ui-branding.js";
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
@@ -126,6 +127,7 @@ export async function createApp(
   api.use(externalEventSourceRoutes(db));
   api.use(webhooksExternalRoutes(db));
   api.use(departmentRoutes(db));
+  api.use(knowledgeRoutes(db));
   api.use(
     accessRoutes(db, {
       deploymentMode: opts.deploymentMode,

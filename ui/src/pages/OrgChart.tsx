@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { useNavigate } from "@/lib/router";
+import { useNavigate, Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
+import { departmentsApi } from "../api/departments";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -154,11 +155,41 @@ export function OrgChart() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: departments } = useQuery({
+    queryKey: queryKeys.departments.list(selectedCompanyId!),
+    queryFn: () => departmentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  // Fetch department members for all departments
+  const deptDetails = useQuery({
+    queryKey: ["departments", "all-details", selectedCompanyId],
+    queryFn: async () => {
+      if (!departments || departments.length === 0) return [];
+      return Promise.all(departments.map((d) => departmentsApi.get(d.id)));
+    },
+    enabled: !!selectedCompanyId && !!departments && departments.length > 0,
+  });
+
   const agentMap = useMemo(() => {
     const m = new Map<string, Agent>();
     for (const a of agents ?? []) m.set(a.id, a);
     return m;
   }, [agents]);
+
+  // Map agent ID to departments they belong to
+  const agentDepartmentMap = useMemo(() => {
+    const m = new Map<string, Array<{ id: string; name: string; color: string }>>();
+    for (const dept of deptDetails.data ?? []) {
+      if (!dept) continue;
+      for (const member of dept.members ?? []) {
+        const arr = m.get(member.agentId) ?? [];
+        arr.push({ id: dept.id, name: dept.name, color: dept.color });
+        m.set(member.agentId, arr);
+      }
+    }
+    return m;
+  }, [deptDetails.data]);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Org Chart" }]);
@@ -373,6 +404,7 @@ export function OrgChart() {
         {allNodes.map((node) => {
           const agent = agentMap.get(node.id);
           const dotColor = statusDotColor[node.status] ?? defaultDotColor;
+          const depts = agentDepartmentMap.get(node.id) ?? [];
 
           return (
             <div
@@ -413,6 +445,29 @@ export function OrgChart() {
                   )}
                 </div>
               </div>
+              {/* Department badges */}
+              {depts.length > 0 && (
+                <div className="flex items-center gap-1 px-4 pb-2.5 -mt-1">
+                  {depts.map((dept) => (
+                    <Link
+                      key={dept.id}
+                      to={`/departments/${dept.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium no-underline hover:opacity-80 transition-opacity"
+                      style={{
+                        backgroundColor: `${dept.color}18`,
+                        color: dept.color,
+                      }}
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-sm"
+                        style={{ backgroundColor: dept.color }}
+                      />
+                      {dept.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

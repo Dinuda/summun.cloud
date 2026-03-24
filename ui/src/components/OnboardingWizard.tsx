@@ -85,6 +85,7 @@ export function OnboardingWizard() {
   const [companyName, setCompanyName] = useState("");
   const [companyGoal, setCompanyGoal] = useState("");
   const [selectedDeptTemplates, setSelectedDeptTemplates] = useState<Set<string>>(new Set());
+  const [createdDepartmentIds, setCreatedDepartmentIds] = useState<string[]>([]);
 
   // Step 2
   const [agentName, setAgentName] = useState("CEO");
@@ -349,17 +350,20 @@ export function OnboardingWizard() {
       }
 
       // Create selected department templates
+      const deptIds: string[] = [];
       for (const templateType of selectedDeptTemplates) {
         const template = DEPARTMENT_TEMPLATES.find((t) => t.type === templateType);
         if (template) {
-          await departmentsApi.create(company.id, {
+          const dept = await departmentsApi.create(company.id, {
             name: template.name,
             templateType: template.type,
             icon: template.icon,
             color: template.color,
           });
+          deptIds.push(dept.id);
         }
       }
+      setCreatedDepartmentIds(deptIds);
       if (selectedDeptTemplates.size > 0) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.departments.list(company.id),
@@ -432,6 +436,20 @@ export function OnboardingWizard() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.agents.list(createdCompanyId)
       });
+
+      // Auto-assign agent to departments created in step 1
+      for (const deptId of createdDepartmentIds) {
+        await departmentsApi.addMember(deptId, {
+          agentId: agent.id,
+          role: "head",
+        });
+      }
+      if (createdDepartmentIds.length > 0) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.departments.list(createdCompanyId),
+        });
+      }
+
       setStep(3);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create agent");

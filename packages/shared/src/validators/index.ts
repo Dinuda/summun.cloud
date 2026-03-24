@@ -201,3 +201,12 @@ export {
   type AddDepartmentMember,
   type UpdateDepartmentMember,
 } from "./department.js";
+
+export {
+  createKnowledgeEntrySchema,
+  updateKnowledgeEntrySchema,
+  knowledgeSearchQuerySchema,
+  type CreateKnowledgeEntry,
+  type UpdateKnowledgeEntry,
+  type KnowledgeSearchQuery,
+} from "./knowledge.js";

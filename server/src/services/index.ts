@@ -20,4 +20,6 @@ export { publishLiveEvent, subscribeCompanyLiveEvents } from "./live-events.js";
 export { reconcilePersistedRuntimeServicesOnStartup } from "./workspace-runtime.js";
 export { externalIntegrationService } from "./external-integrations.js";
 export { departmentService } from "./departments.js";
+export { knowledgeIngestionService } from "./knowledge-ingestion.js";
+export { knowledgeSearchService } from "./knowledge-search.js";
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";

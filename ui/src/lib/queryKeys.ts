@@ -90,4 +90,12 @@ export const queryKeys = {
     signal: (departmentId: string, signalId: string) =>
       ["departments", "signal", departmentId, signalId] as const,
   },
+  knowledge: {
+    list: (companyId: string, params?: Record<string, unknown>) =>
+      ["knowledge", companyId, params] as const,
+    projectList: (companyId: string, projectId: string, params?: Record<string, unknown>) =>
+      ["knowledge", companyId, "project", projectId, params] as const,
+    stats: (companyId: string) => ["knowledge", "stats", companyId] as const,
+    detail: (entryId: string) => ["knowledge", "detail", entryId] as const,
+  },
 };

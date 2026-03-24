@@ -103,6 +103,13 @@ export type {
 } from "./department.js";
 export { DEPARTMENT_TEMPLATES } from "./department.js";
 export type {
+  KnowledgeEntry,
+  KnowledgeSearchHit,
+  KnowledgeSearchResult,
+  KnowledgeIngestionStats,
+  IngestionResult,
+} from "./knowledge.js";
+export type {
   CompanyPortabilityInclude,
   CompanyPortabilitySecretRequirement,
   CompanyPortabilityCompanyManifestEntry,
