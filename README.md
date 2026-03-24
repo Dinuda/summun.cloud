@@ -265,7 +265,7 @@ MIT &copy; 2026 Summun
 
 ## Upstream Attribution
 
-Summun is a fork of [Paperclip](https://github.com/paperclipai/paperclip), created by Paperclip AI and contributors.
+Summun is a fork of [summun](https://github.com/paperclipai/paperclip), created by Paperclip AI and contributors.
 
 - Upstream repository: [paperclipai/paperclip](https://github.com/paperclipai/paperclip)
 - Upstream license: MIT (preserved in [LICENSE](LICENSE))

@@ -167,6 +167,23 @@ export type {
   SecretProviderDescriptor,
 } from "./types/index.js";
 
+export type {
+  Department,
+  DepartmentMember,
+  DepartmentWithMembers,
+  DepartmentCrewAgent,
+  ProcessorStage,
+  ProcessorItem,
+  DepartmentVitals,
+  DepartmentProcessor,
+  DepartmentTemplateType as DepartmentTemplateTypeConst,
+  DepartmentMemberRole as DepartmentMemberRoleConst,
+  DepartmentTemplate,
+  ChannelHealth,
+  SignalTransformation,
+  TransformationStage,
+} from "./types/index.js";
+
 export {
   createCompanySchema,
   updateCompanySchema,
@@ -320,7 +337,19 @@ export {
   type CompanyPortabilityExport,
   type CompanyPortabilityPreview,
   type CompanyPortabilityImport,
+  DEPARTMENT_TEMPLATE_TYPES,
+  DEPARTMENT_MEMBER_ROLES,
+  createDepartmentSchema,
+  updateDepartmentSchema,
+  addDepartmentMemberSchema,
+  updateDepartmentMemberSchema,
+  type CreateDepartment,
+  type UpdateDepartment,
+  type AddDepartmentMember,
+  type UpdateDepartmentMember,
 } from "./validators/index.js";
+
+export { DEPARTMENT_TEMPLATES } from "./types/index.js";
 
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";

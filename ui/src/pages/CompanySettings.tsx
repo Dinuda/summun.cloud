@@ -11,6 +11,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Settings, Check } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
+import { DepartmentManager } from "../components/DepartmentManager";
 import { useNavigate } from "@/lib/router";
 import {
   externalRulesConfigSchema,
@@ -746,6 +747,16 @@ export function CompanySettings() {
             checked={!!selectedCompany.requireBoardApprovalForNewAgents}
             onChange={(v) => settingsMutation.mutate(v)}
           />
+        </div>
+      </div>
+
+      {/* Departments */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Departments
+        </div>
+        <div className="rounded-md border border-border px-4 py-4">
+          <DepartmentManager />
         </div>
       </div>
 

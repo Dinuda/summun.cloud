@@ -86,6 +86,23 @@ export type {
   InstanceUserRoleGrant,
 } from "./access.js";
 export type {
+  Department,
+  DepartmentMember,
+  DepartmentWithMembers,
+  DepartmentCrewAgent,
+  ProcessorStage,
+  ProcessorItem,
+  DepartmentVitals,
+  DepartmentProcessor,
+  DepartmentTemplateType,
+  DepartmentMemberRole,
+  DepartmentTemplate,
+  ChannelHealth,
+  SignalTransformation,
+  TransformationStage,
+} from "./department.js";
+export { DEPARTMENT_TEMPLATES } from "./department.js";
+export type {
   CompanyPortabilityInclude,
   CompanyPortabilitySecretRequirement,
   CompanyPortabilityCompanyManifestEntry,

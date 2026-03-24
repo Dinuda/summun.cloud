@@ -8,6 +8,7 @@ import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { heartbeatsApi } from "../api/heartbeats";
 import { externalEventSourcesApi } from "../api/externalEventSources";
+import { departmentsApi } from "../api/departments";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -89,6 +90,12 @@ export function Dashboard() {
   } = useQuery({
     queryKey: queryKeys.external.metaOps(selectedCompanyId!, 10),
     queryFn: () => externalEventSourcesApi.metaOps(selectedCompanyId!, 10),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: departments } = useQuery({
+    queryKey: queryKeys.departments.list(selectedCompanyId!),
+    queryFn: () => departmentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
 
@@ -299,6 +306,38 @@ export function Dashboard() {
               <SuccessRateChart runs={runs ?? []} />
             </ChartCard>
           </div>
+
+          {/* Departments Summary */}
+          {departments && departments.length > 0 && (
+            <div className="rounded-md border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Departments
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {departments.map((dept) => (
+                  <Link
+                    key={dept.id}
+                    to={`/departments/${dept.id}`}
+                    className="flex items-center gap-3 rounded-lg border border-border p-3 hover:bg-accent/30 transition-colors no-underline text-inherit"
+                  >
+                    <span
+                      className="h-8 w-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
+                      style={{ backgroundColor: dept.color }}
+                    >
+                      {dept.name.charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{dept.name}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{dept.templateType}</p>
+                    </div>
+                    <span className="text-xs text-muted-foreground font-mono capitalize">{dept.templateType}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="rounded-md border border-border p-4 space-y-3">
             <div className="flex items-center justify-between">

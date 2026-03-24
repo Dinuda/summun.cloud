@@ -99,12 +99,12 @@ async function ensureCodexSkillsInjected(onLog: AdapterExecutionContext["onLog"]
       await fs.symlink(source, target);
       await onLog(
         "stderr",
-        `[paperclip] Injected Codex skill "${entry.name}" into ${skillsHome}\n`,
+        `[summun] Injected Codex skill "${entry.name}" into ${skillsHome}\n`,
       );
     } catch (err) {
       await onLog(
         "stderr",
-        `[paperclip] Failed to inject Codex skill "${entry.name}" into ${skillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
+        `[summun] Failed to inject Codex skill "${entry.name}" into ${skillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
     }
   }
@@ -140,18 +140,18 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const workspaceWorktreePath = asString(workspaceContext.worktreePath, "");
   const workspaceHints = Array.isArray(context.summunWorkspaces)
     ? context.summunWorkspaces.filter(
-        (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
-      )
+      (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
+    )
     : [];
   const runtimeServiceIntents = Array.isArray(context.summunRuntimeServiceIntents)
     ? context.summunRuntimeServiceIntents.filter(
-        (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
-      )
+      (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
+    )
     : [];
   const runtimeServices = Array.isArray(context.summunRuntimeServices)
     ? context.summunRuntimeServices.filter(
-        (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
-      )
+      (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
+    )
     : [];
   const runtimePrimaryUrl = asString(context.summunRuntimePrimaryUrl, "");
   const configuredCwd = asString(config.cwd, "");
@@ -270,7 +270,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   if (runtimeSessionId && !canResumeSession) {
     await onLog(
       "stderr",
-      `[paperclip] Codex session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
+      `[summun] Codex session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
     );
   }
   const instructionsFilePath = asString(config.instructionsFilePath, "").trim();
@@ -285,13 +285,13 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         `Resolve any relative file references from ${instructionsDir}.\n\n`;
       await onLog(
         "stderr",
-        `[paperclip] Loaded agent instructions file: ${instructionsFilePath}\n`,
+        `[summun] Loaded agent instructions file: ${instructionsFilePath}\n`,
       );
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       await onLog(
         "stderr",
-        `[paperclip] Warning: could not read agent instructions file "${instructionsFilePath}": ${reason}\n`,
+        `[summun] Warning: could not read agent instructions file "${instructionsFilePath}": ${reason}\n`,
       );
     }
   }
@@ -330,21 +330,21 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const issueExecutionOverlay =
     wakeIssueId.length > 0
       ? [
-          "",
-          "Assigned issue context for this run:",
-          `Issue ID: ${wakeIssueId}`,
-          wakeIssueIdentifier ? `Issue key: ${wakeIssueIdentifier}` : "",
-          wakeIssueTitle ? `Issue title: ${wakeIssueTitle}` : "",
-          wakeIssueDescription ? `Issue description:\n${wakeIssueDescription}` : "",
-          "",
-          "Execution requirements:",
-          "- Do not ask the board user to re-provide this lead.",
-          "- Use the issue details above as the primary input.",
-          "- Perform the requested lead-follow-up action now.",
-          "- If more details are needed, fetch latest issue/comments via SUMMUN_API_URL + SUMMUN_API_KEY.",
-        ]
-          .filter((line) => line.length > 0)
-          .join("\n")
+        "",
+        "Assigned issue context for this run:",
+        `Issue ID: ${wakeIssueId}`,
+        wakeIssueIdentifier ? `Issue key: ${wakeIssueIdentifier}` : "",
+        wakeIssueTitle ? `Issue title: ${wakeIssueTitle}` : "",
+        wakeIssueDescription ? `Issue description:\n${wakeIssueDescription}` : "",
+        "",
+        "Execution requirements:",
+        "- Do not ask the board user to re-provide this lead.",
+        "- Use the issue details above as the primary input.",
+        "- Perform the requested lead-follow-up action now.",
+        "- If more details are needed, fetch latest issue/comments via SUMMUN_API_URL + SUMMUN_API_KEY.",
+      ]
+        .filter((line) => line.length > 0)
+        .join("\n")
       : "";
   const prompt = `${instructionsPrefix}${renderedPrompt}${issueExecutionOverlay}`;
 
@@ -470,7 +470,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   ) {
     await onLog(
       "stderr",
-      `[paperclip] Codex resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
+      `[summun] Codex resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
     );
     const retry = await runAttempt(null);
     return toResult(retry, true);

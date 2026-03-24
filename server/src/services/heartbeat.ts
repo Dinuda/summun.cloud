@@ -406,11 +406,11 @@ function resolveNextSessionState(input: {
 
   const displayId = truncateDisplayId(
     explicitDisplayId ??
-      (codec.getDisplayId ? codec.getDisplayId(deserialized) : null) ??
-      readNonEmptyString(deserialized?.sessionId) ??
-      (shouldUsePrevious ? previousDisplayId : null) ??
-      explicitSessionId ??
-      (shouldUsePrevious ? previousLegacySessionId : null),
+    (codec.getDisplayId ? codec.getDisplayId(deserialized) : null) ??
+    readNonEmptyString(deserialized?.sessionId) ??
+    (shouldUsePrevious ? previousDisplayId : null) ??
+    explicitSessionId ??
+    (shouldUsePrevious ? previousLegacySessionId : null),
   );
 
   const legacySessionId =
@@ -492,8 +492,8 @@ export function heartbeatService(db: Db) {
       );
       return truncateDisplayId(
         existingTaskSession?.sessionDisplayId ??
-          (codec.getDisplayId ? codec.getDisplayId(parsedParams) : null) ??
-          readNonEmptyString(parsedParams?.sessionId),
+        (codec.getDisplayId ? codec.getDisplayId(parsedParams) : null) ??
+        readNonEmptyString(parsedParams?.sessionId),
       );
     }
 
@@ -548,10 +548,10 @@ export function heartbeatService(db: Db) {
     const contextProjectId = readNonEmptyString(context.projectId);
     const issueProjectId = issueId
       ? await db
-          .select({ projectId: issues.projectId })
-          .from(issues)
-          .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
-          .then((rows) => rows[0]?.projectId ?? null)
+        .select({ projectId: issues.projectId })
+        .from(issues)
+        .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
+        .then((rows) => rows[0]?.projectId ?? null)
       : null;
     const resolvedProjectId = issueProjectId ?? contextProjectId;
     const useProjectWorkspace = opts?.useProjectWorkspace !== false;
@@ -559,15 +559,15 @@ export function heartbeatService(db: Db) {
 
     const projectWorkspaceRows = workspaceProjectId
       ? await db
-          .select()
-          .from(projectWorkspaces)
-          .where(
-            and(
-              eq(projectWorkspaces.companyId, agent.companyId),
-              eq(projectWorkspaces.projectId, workspaceProjectId),
-            ),
-          )
-          .orderBy(asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id))
+        .select()
+        .from(projectWorkspaces)
+        .where(
+          and(
+            eq(projectWorkspaces.companyId, agent.companyId),
+            eq(projectWorkspaces.projectId, workspaceProjectId),
+          ),
+        )
+        .orderBy(asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id))
       : [];
 
     const workspaceHints = projectWorkspaceRows.map((workspace) => ({
@@ -613,17 +613,14 @@ export function heartbeatService(db: Db) {
         const extraMissingCount = Math.max(0, missingProjectCwds.length - 1);
         warnings.push(
           extraMissingCount > 0
-            ? `Project workspace path "${firstMissing}" and ${extraMissingCount} other configured path(s) are not available yet. Using ${
-                fallbackWorkspace.source === "configured" ? "configured adapter cwd" : "fallback workspace"
-              } "${fallbackCwd}" for this run.`
-            : `Project workspace path "${firstMissing}" is not available yet. Using ${
-                fallbackWorkspace.source === "configured" ? "configured adapter cwd" : "fallback workspace"
-              } "${fallbackCwd}" for this run.`,
+            ? `Project workspace path "${firstMissing}" and ${extraMissingCount} other configured path(s) are not available yet. Using ${fallbackWorkspace.source === "configured" ? "configured adapter cwd" : "fallback workspace"
+            } "${fallbackCwd}" for this run.`
+            : `Project workspace path "${firstMissing}" is not available yet. Using ${fallbackWorkspace.source === "configured" ? "configured adapter cwd" : "fallback workspace"
+            } "${fallbackCwd}" for this run.`,
         );
       } else if (!hasConfiguredProjectCwd) {
         warnings.push(
-          `Project workspace has no local cwd configured. Using ${
-            fallbackWorkspace.source === "configured" ? "configured adapter cwd" : "fallback workspace"
+          `Project workspace has no local cwd configured. Using ${fallbackWorkspace.source === "configured" ? "configured adapter cwd" : "fallback workspace"
           } "${fallbackCwd}" for this run.`,
         );
       }
@@ -1137,21 +1134,21 @@ export function heartbeatService(db: Db) {
     const issueId = readNonEmptyString(context.issueId);
     const issueAssigneeConfig = issueId
       ? await db
-          .select({
-            projectId: issues.projectId,
-            assigneeAgentId: issues.assigneeAgentId,
-            assigneeAdapterOverrides: issues.assigneeAdapterOverrides,
-            executionWorkspaceSettings: issues.executionWorkspaceSettings,
-          })
-          .from(issues)
-          .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
-          .then((rows) => rows[0] ?? null)
+        .select({
+          projectId: issues.projectId,
+          assigneeAgentId: issues.assigneeAgentId,
+          assigneeAdapterOverrides: issues.assigneeAdapterOverrides,
+          executionWorkspaceSettings: issues.executionWorkspaceSettings,
+        })
+        .from(issues)
+        .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
+        .then((rows) => rows[0] ?? null)
       : null;
     const issueAssigneeOverrides =
       issueAssigneeConfig && issueAssigneeConfig.assigneeAgentId === agent.id
         ? parseIssueAssigneeAdapterOverrides(
-            issueAssigneeConfig.assigneeAdapterOverrides,
-          )
+          issueAssigneeConfig.assigneeAdapterOverrides,
+        )
         : null;
     const issueExecutionWorkspaceSettings = parseIssueExecutionWorkspaceSettings(
       issueAssigneeConfig?.executionWorkspaceSettings,
@@ -1160,10 +1157,10 @@ export function heartbeatService(db: Db) {
     const executionProjectId = issueAssigneeConfig?.projectId ?? contextProjectId;
     const projectExecutionWorkspacePolicy = executionProjectId
       ? await db
-          .select({ executionWorkspacePolicy: projects.executionWorkspacePolicy })
-          .from(projects)
-          .where(and(eq(projects.id, executionProjectId), eq(projects.companyId, agent.companyId)))
-          .then((rows) => parseProjectExecutionWorkspacePolicy(rows[0]?.executionWorkspacePolicy))
+        .select({ executionWorkspacePolicy: projects.executionWorkspacePolicy })
+        .from(projects)
+        .where(and(eq(projects.id, executionProjectId), eq(projects.companyId, agent.companyId)))
+        .then((rows) => parseProjectExecutionWorkspacePolicy(rows[0]?.executionWorkspacePolicy))
       : null;
     const taskSession = taskKey
       ? await getTaskSession(agent.companyId, agent.id, agent.adapterType, taskKey)
@@ -1202,15 +1199,15 @@ export function heartbeatService(db: Db) {
     );
     const issueRef = issueId
       ? await db
-          .select({
-            id: issues.id,
-            identifier: issues.identifier,
-            title: issues.title,
-            description: issues.description,
-          })
-          .from(issues)
-          .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
-          .then((rows) => rows[0] ?? null)
+        .select({
+          id: issues.id,
+          identifier: issues.identifier,
+          title: issues.title,
+          description: issues.description,
+        })
+        .from(issues)
+        .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
+        .then((rows) => rows[0] ?? null)
       : null;
     if (issueRef) {
       context.summunIssue = {
@@ -1254,10 +1251,10 @@ export function heartbeatService(db: Db) {
       ...(runtimeSessionResolution.warning ? [runtimeSessionResolution.warning] : []),
       ...(resetTaskSession && sessionResetReason
         ? [
-            taskKey
-              ? `Skipping saved session resume for task "${taskKey}" because ${sessionResetReason}.`
-              : `Skipping saved session resume because ${sessionResetReason}.`,
-          ]
+          taskKey
+            ? `Skipping saved session resume for task "${taskKey}" because ${sessionResetReason}.`
+            : `Skipping saved session resume because ${sessionResetReason}.`,
+        ]
         : []),
     ];
     context.summunWorkspace = {
@@ -1277,8 +1274,8 @@ export function heartbeatService(db: Db) {
       const runtimeConfig = parseObject(resolvedConfig.workspaceRuntime);
       return Array.isArray(runtimeConfig.services)
         ? runtimeConfig.services.filter(
-            (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
-          )
+          (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
+        )
         : [];
     })();
     if (runtimeServiceIntents.length > 0) {
@@ -1292,9 +1289,9 @@ export function heartbeatService(db: Db) {
     const runtimeSessionFallback = taskKey || resetTaskSession ? null : runtime.sessionId;
     const previousSessionDisplayId = truncateDisplayId(
       taskSessionForRun?.sessionDisplayId ??
-        (sessionCodec.getDisplayId ? sessionCodec.getDisplayId(runtimeSessionParams) : null) ??
-        readNonEmptyString(runtimeSessionParams?.sessionId) ??
-        runtimeSessionFallback,
+      (sessionCodec.getDisplayId ? sessionCodec.getDisplayId(runtimeSessionParams) : null) ??
+      readNonEmptyString(runtimeSessionParams?.sessionId) ??
+      runtimeSessionFallback,
     );
     const runtimeForAdapter = {
       sessionId: readNonEmptyString(runtimeSessionParams?.sessionId) ?? runtimeSessionFallback,
@@ -1394,7 +1391,7 @@ export function heartbeatService(db: Db) {
         });
       };
       for (const warning of runtimeWorkspaceWarnings) {
-        await onLog("stderr", `[paperclip] ${warning}\n`);
+        await onLog("stderr", `[summun] ${warning}\n`);
       }
       const adapterEnv = Object.fromEntries(
         Object.entries(parseObject(resolvedConfig.env)).filter(
@@ -1440,7 +1437,7 @@ export function heartbeatService(db: Db) {
         } catch (err) {
           await onLog(
             "stderr",
-            `[paperclip] Failed to post workspace-ready comment: ${err instanceof Error ? err.message : String(err)}\n`,
+            `[summun] Failed to post workspace-ready comment: ${err instanceof Error ? err.message : String(err)}\n`,
           );
         }
       }
@@ -1486,18 +1483,18 @@ export function heartbeatService(db: Db) {
       });
       const adapterManagedRuntimeServices = adapterResult.runtimeServices
         ? await persistAdapterManagedRuntimeServices({
-            db,
-            adapterType: agent.adapterType,
-            runId: run.id,
-            agent: {
-              id: agent.id,
-              name: agent.name,
-              companyId: agent.companyId,
-            },
-            issue: issueRef,
-            workspace: executionWorkspace,
-            reports: adapterResult.runtimeServices,
-          })
+          db,
+          adapterType: agent.adapterType,
+          runId: run.id,
+          agent: {
+            id: agent.id,
+            name: agent.name,
+            companyId: agent.companyId,
+          },
+          issue: issueRef,
+          workspace: executionWorkspace,
+          reports: adapterResult.runtimeServices,
+        })
         : [];
       if (adapterManagedRuntimeServices.length > 0) {
         const combinedRuntimeServices = [
@@ -1527,7 +1524,7 @@ export function heartbeatService(db: Db) {
           } catch (err) {
             await onLog(
               "stderr",
-              `[paperclip] Failed to post adapter-managed runtime comment: ${err instanceof Error ? err.message : String(err)}\n`,
+              `[summun] Failed to post adapter-managed runtime comment: ${err instanceof Error ? err.message : String(err)}\n`,
             );
           }
         }
@@ -1569,10 +1566,10 @@ export function heartbeatService(db: Db) {
       const usageJson =
         adapterResult.usage || adapterResult.costUsd != null
           ? ({
-              ...(adapterResult.usage ?? {}),
-              ...(adapterResult.costUsd != null ? { costUsd: adapterResult.costUsd } : {}),
-              ...(adapterResult.billingType ? { billingType: adapterResult.billingType } : {}),
-            } as Record<string, unknown>)
+            ...(adapterResult.usage ?? {}),
+            ...(adapterResult.costUsd != null ? { costUsd: adapterResult.costUsd } : {}),
+            ...(adapterResult.billingType ? { billingType: adapterResult.billingType } : {}),
+          } as Record<string, unknown>)
           : null;
 
       await setRunStatus(run.id, status, {
