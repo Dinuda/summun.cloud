@@ -2,14 +2,18 @@
 
 Run this checklist on every heartbeat. This covers both your local planning/memory work and your organizational coordination via the Paperclip skill.
 
+Path rule for this repo: use repo-local paths under `agents/ceo/...` for memory/planning files. Do not use external home paths such as `~/.summun/instances/...`.
+
 ## 1. Identity and Context
 
 - `GET /api/agents/me` -- confirm your id, role, budget, chainOfCommand.
 - Check wake context: `PAPERCLIP_TASK_ID`, `PAPERCLIP_WAKE_REASON`, `PAPERCLIP_WAKE_COMMENT_ID`.
+- If required runtime auth vars (`PAPERCLIP_API_URL`, `PAPERCLIP_API_KEY`, `PAPERCLIP_AGENT_ID`, `PAPERCLIP_COMPANY_ID`, `PAPERCLIP_RUN_ID`) are missing, treat the run as blocked and exit cleanly after recording it in repo-local memory.
+- In that blocked state, do not inspect `~/.summun/...` or other external config paths.
 
 ## 2. Local Planning Check
 
-1. Read today's plan from `$AGENT_HOME/memory/YYYY-MM-DD.md` under "## Today's Plan".
+1. Read today's plan from `agents/ceo/memory/YYYY-MM-DD.md` under "## Today's Plan".
 2. Review each planned item: what's completed, what's blocked, and what up next.
 3. For any blockers, resolve them yourself or escalate to the board.
 4. If you're ahead, start on the next highest priority.
@@ -44,8 +48,8 @@ If `PAPERCLIP_APPROVAL_ID` is set:
 ## 7. Fact Extraction
 
 1. Check for new conversations since last extraction.
-2. Extract durable facts to the relevant entity in `$AGENT_HOME/life/` (PARA).
-3. Update `$AGENT_HOME/memory/YYYY-MM-DD.md` with timeline entries.
+2. Extract durable facts to the relevant entity in `agents/ceo/life/` (PARA).
+3. Update `agents/ceo/memory/YYYY-MM-DD.md` with timeline entries.
 4. Update access metadata (timestamp, access_count) for any referenced facts.
 
 ## 8. Exit

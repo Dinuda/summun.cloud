@@ -25,6 +25,8 @@ import { CompanySettings } from "./pages/CompanySettings";
 import { CompanyIntegrationsBuilder } from "./pages/CompanyIntegrationsBuilder";
 import { DesignGuide } from "./pages/DesignGuide";
 import { OrgChart } from "./pages/OrgChart";
+import { DepartmentDetail } from "./pages/DepartmentDetail";
+import { SignalDetail } from "./pages/SignalDetail";
 import { NewAgent } from "./pages/NewAgent";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
@@ -110,6 +112,8 @@ function boardRoutes() {
       <Route path="company/settings" element={<CompanySettings />} />
       <Route path="company/integrations" element={<CompanyIntegrationsBuilder />} />
       <Route path="org" element={<OrgChart />} />
+      <Route path="departments/:departmentId" element={<DepartmentDetail />} />
+      <Route path="departments/:departmentId/signals/:signalId" element={<SignalDetail />} />
       <Route path="agents" element={<Navigate to="/agents/all" replace />} />
       <Route path="agents/all" element={<Agents />} />
       <Route path="agents/active" element={<Agents />} />
@@ -241,6 +245,8 @@ export function App() {
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
+          <Route path="departments/:departmentId" element={<UnprefixedBoardRedirect />} />
+          <Route path="departments/:departmentId/signals/:signalId" element={<UnprefixedBoardRedirect />} />
           <Route path="company/settings" element={<UnprefixedBoardRedirect />} />
           <Route path="company/integrations" element={<UnprefixedBoardRedirect />} />
           <Route path=":companyPrefix" element={<Layout />}>

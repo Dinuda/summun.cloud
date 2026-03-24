@@ -186,3 +186,18 @@ export {
   type UpdateMemberPermissions,
   type UpdateUserCompanyAccess,
 } from "./access.js";
+
+export {
+  DEPARTMENT_TEMPLATE_TYPES,
+  DEPARTMENT_MEMBER_ROLES,
+  createDepartmentSchema,
+  updateDepartmentSchema,
+  addDepartmentMemberSchema,
+  updateDepartmentMemberSchema,
+  type DepartmentTemplateType,
+  type DepartmentMemberRole,
+  type CreateDepartment,
+  type UpdateDepartment,
+  type AddDepartmentMember,
+  type UpdateDepartmentMember,
+} from "./department.js";

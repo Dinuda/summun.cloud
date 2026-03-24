@@ -2,11 +2,13 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AdapterEnvironmentTestResult } from "@paperclipai/shared";
+import { DEPARTMENT_TEMPLATES } from "@paperclipai/shared";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { companiesApi } from "../api/companies";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
+import { departmentsApi } from "../api/departments";
 import { issuesApi } from "../api/issues";
 import { queryKeys } from "../lib/queryKeys";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
@@ -82,6 +84,7 @@ export function OnboardingWizard() {
   // Step 1
   const [companyName, setCompanyName] = useState("");
   const [companyGoal, setCompanyGoal] = useState("");
+  const [selectedDeptTemplates, setSelectedDeptTemplates] = useState<Set<string>>(new Set());
 
   // Step 2
   const [agentName, setAgentName] = useState("CEO");
@@ -345,6 +348,24 @@ export function OnboardingWizard() {
         });
       }
 
+      // Create selected department templates
+      for (const templateType of selectedDeptTemplates) {
+        const template = DEPARTMENT_TEMPLATES.find((t) => t.type === templateType);
+        if (template) {
+          await departmentsApi.create(company.id, {
+            name: template.name,
+            templateType: template.type,
+            icon: template.icon,
+            color: template.color,
+          });
+        }
+      }
+      if (selectedDeptTemplates.size > 0) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.departments.list(company.id),
+        });
+      }
+
       setStep(2);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create company");
@@ -604,6 +625,58 @@ export function OnboardingWizard() {
                       value={companyGoal}
                       onChange={(e) => setCompanyGoal(e.target.value)}
                     />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Departments (optional)
+                    </label>
+                    <p className="text-[11px] text-muted-foreground mb-2">
+                      Choose which departments to set up. You can always add more later.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {DEPARTMENT_TEMPLATES.map((template) => {
+                        const isSelected = selectedDeptTemplates.has(template.type);
+                        return (
+                          <button
+                            key={template.type}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDeptTemplates((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(template.type)) {
+                                  next.delete(template.type);
+                                } else {
+                                  next.add(template.type);
+                                }
+                                return next;
+                              });
+                            }}
+                            className={cn(
+                              "flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-all text-sm",
+                              isSelected
+                                ? "border-primary/50 bg-primary/5"
+                                : "border-border hover:border-border/80 hover:bg-accent/30",
+                            )}
+                          >
+                            <span
+                              className="h-6 w-6 rounded-md flex items-center justify-center text-white text-xs font-bold shrink-0"
+                              style={{ backgroundColor: template.color }}
+                            >
+                              {template.name.charAt(0)}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="font-medium text-xs">{template.name}</p>
+                              <p className="text-[10px] text-muted-foreground line-clamp-1">
+                                {template.description}
+                              </p>
+                            </div>
+                            {isSelected && (
+                              <Check className="h-3.5 w-3.5 text-primary ml-auto shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}

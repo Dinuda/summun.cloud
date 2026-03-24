@@ -64,7 +64,7 @@ async function ensurePiSkillsInjected(onLog: AdapterExecutionContext["onLog"]) {
 
   const piSkillsHome = path.join(os.homedir(), ".pi", "agent", "skills");
   await fs.mkdir(piSkillsHome, { recursive: true });
-  
+
   const entries = await fs.readdir(skillsDir, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -77,12 +77,12 @@ async function ensurePiSkillsInjected(onLog: AdapterExecutionContext["onLog"]) {
       await fs.symlink(source, target);
       await onLog(
         "stderr",
-        `[paperclip] Injected Pi skill "${entry.name}" into ${piSkillsHome}\n`,
+        `[summun] Injected Pi skill "${entry.name}" into ${piSkillsHome}\n`,
       );
     } catch (err) {
       await onLog(
         "stderr",
-        `[paperclip] Failed to inject Pi skill "${entry.name}" into ${piSkillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
+        `[summun] Failed to inject Pi skill "${entry.name}" into ${piSkillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
     }
   }
@@ -121,18 +121,18 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const workspaceRepoRef = asString(workspaceContext.repoRef, "");
   const workspaceHints = Array.isArray(context.summunWorkspaces)
     ? context.summunWorkspaces.filter(
-        (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
-      )
+      (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
+    )
     : [];
   const configuredCwd = asString(config.cwd, "");
   const useConfiguredInsteadOfAgentHome = workspaceSource === "agent_home" && configuredCwd.length > 0;
   const effectiveWorkspaceCwd = useConfiguredInsteadOfAgentHome ? "" : workspaceCwd;
   const cwd = effectiveWorkspaceCwd || configuredCwd || process.cwd();
   await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
-  
+
   // Ensure sessions directory exists
   await ensureSessionsDir();
-  
+
   // Inject skills
   await ensurePiSkillsInjected(onLog);
 
@@ -142,7 +142,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     typeof envConfig.SUMMUN_API_KEY === "string" && envConfig.SUMMUN_API_KEY.trim().length > 0;
   const env: Record<string, string> = { ...buildPaperclipEnv(agent) };
   env.SUMMUN_RUN_ID = runId;
-  
+
   const wakeTaskId =
     (typeof context.taskId === "string" && context.taskId.trim().length > 0 && context.taskId.trim()) ||
     (typeof context.issueId === "string" && context.issueId.trim().length > 0 && context.issueId.trim()) ||
@@ -166,7 +166,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const linkedIssueIds = Array.isArray(context.issueIds)
     ? context.issueIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     : [];
-    
+
   if (wakeTaskId) env.SUMMUN_TASK_ID = wakeTaskId;
   if (wakeReason) env.SUMMUN_WAKE_REASON = wakeReason;
   if (wakeCommentId) env.SUMMUN_WAKE_COMMENT_ID = wakeCommentId;
@@ -186,7 +186,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   if (!hasExplicitApiKey && authToken) {
     env.SUMMUN_API_KEY = authToken;
   }
-  
+
   const runtimeEnv = Object.fromEntries(
     Object.entries(ensurePathInEnv({ ...process.env, ...env })).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
@@ -218,11 +218,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     runtimeSessionId.length > 0 &&
     (runtimeSessionCwd.length === 0 || path.resolve(runtimeSessionCwd) === path.resolve(cwd));
   const sessionPath = canResumeSession ? runtimeSessionId : buildSessionPath(agent.id, new Date().toISOString());
-  
+
   if (runtimeSessionId && !canResumeSession) {
     await onLog(
       "stderr",
-      `[paperclip] Pi session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
+      `[summun] Pi session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
     );
   }
 
@@ -244,7 +244,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     ? path.resolve(cwd, instructionsFilePath)
     : "";
   const instructionsFileDir = instructionsFilePath ? `${path.dirname(instructionsFilePath)}/` : "";
-  
+
   let systemPromptExtension = "";
   let instructionsReadFailed = false;
   if (resolvedInstructionsFilePath) {
@@ -257,14 +257,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         `You are agent {{agent.id}} ({{agent.name}}). Continue your Paperclip work.`;
       await onLog(
         "stderr",
-        `[paperclip] Loaded agent instructions file: ${resolvedInstructionsFilePath}\n`,
+        `[summun] Loaded agent instructions file: ${resolvedInstructionsFilePath}\n`,
       );
     } catch (err) {
       instructionsReadFailed = true;
       const reason = err instanceof Error ? err.message : String(err);
       await onLog(
         "stderr",
-        `[paperclip] Warning: could not read agent instructions file "${resolvedInstructionsFilePath}": ${reason}\n`,
+        `[summun] Warning: could not read agent instructions file "${resolvedInstructionsFilePath}": ${reason}\n`,
       );
       // Fall back to base prompt template
       systemPromptExtension = promptTemplate;
@@ -309,22 +309,22 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   const buildArgs = (sessionFile: string): string[] => {
     const args: string[] = [];
-    
+
     // Use RPC mode for proper lifecycle management (waits for agent completion)
     args.push("--mode", "rpc");
-    
+
     // Use --append-system-prompt to extend Pi's default system prompt
     args.push("--append-system-prompt", renderedSystemPromptExtension);
-    
+
     if (provider) args.push("--provider", provider);
     if (modelId) args.push("--model", modelId);
     if (thinking) args.push("--thinking", thinking);
-    
+
     args.push("--tools", "read,bash,edit,write,grep,find,ls");
     args.push("--session", sessionFile);
-    
+
     if (extraArgs.length > 0) args.push(...extraArgs);
-    
+
     return args;
   };
 
@@ -360,13 +360,13 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         await onLog(stream, chunk);
         return;
       }
-      
+
       // Buffer stdout and emit only complete lines
       stdoutBuffer += chunk;
       const lines = stdoutBuffer.split("\n");
       // Keep the last (potentially incomplete) line in the buffer
       stdoutBuffer = lines.pop() || "";
-      
+
       // Emit complete lines
       for (const line of lines) {
         if (line) {
@@ -383,12 +383,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       onLog: bufferedOnLog,
       stdin: buildRpcStdin(),
     });
-    
+
     // Flush any remaining buffer content
     if (stdoutBuffer) {
       await onLog("stdout", stdoutBuffer);
     }
-    
+
     return {
       proc,
       rawStderr: proc.stderr,
@@ -452,7 +452,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const initial = await runAttempt(sessionPath);
   const initialFailed =
     !initial.proc.timedOut && ((initial.proc.exitCode ?? 0) !== 0 || initial.parsed.errors.length > 0);
-  
+
   if (
     canResumeSession &&
     initialFailed &&
@@ -460,7 +460,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   ) {
     await onLog(
       "stderr",
-      `[paperclip] Pi session "${runtimeSessionId}" is unavailable; retrying with a fresh session.\n`,
+      `[summun] Pi session "${runtimeSessionId}" is unavailable; retrying with a fresh session.\n`,
     );
     const newSessionPath = buildSessionPath(agent.id, new Date().toISOString());
     try {

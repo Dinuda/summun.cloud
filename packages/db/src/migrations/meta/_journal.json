@@ -225,6 +225,13 @@
       "when": 1773347370316,
       "tag": "0031_even_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1774350161862,
+      "tag": "0032_futuristic_maximus",
+      "breakpoints": true
     }
   ]
 }

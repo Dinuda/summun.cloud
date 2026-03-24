@@ -81,4 +81,13 @@ export const queryKeys = {
   liveRuns: (companyId: string) => ["live-runs", companyId] as const,
   runIssues: (runId: string) => ["run-issues", runId] as const,
   org: (companyId: string) => ["org", companyId] as const,
+  departments: {
+    list: (companyId: string) => ["departments", companyId] as const,
+    detail: (id: string) => ["departments", "detail", id] as const,
+    crew: (id: string) => ["departments", "crew", id] as const,
+    processor: (id: string) => ["departments", "processor", id] as const,
+    vitals: (id: string) => ["departments", "vitals", id] as const,
+    signal: (departmentId: string, signalId: string) =>
+      ["departments", "signal", departmentId, signalId] as const,
+  },
 };
